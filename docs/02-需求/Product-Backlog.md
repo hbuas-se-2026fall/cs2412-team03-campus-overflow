@@ -12,9 +12,9 @@
 | S1-005 | Story | 采纳回答 | 提问者 | 标记某个回答为已解决 | 关闭问题并让答案浮上来 | Must | 3 | [S1-005-采纳回答.feature](stories/S1-005-采纳回答.feature) | S1 | 待细化 |
 | S1-006 | Story | 编辑自己的问题 | 学生 | 修改标题/正文/标签 | 补充澄清而不重复提问 | Should | 2 | [S1-006-编辑问题.feature](stories/S1-006-编辑问题.feature) | S1 | 待细化 |
 | S1-007 | Story | 评论澄清 | 学生 | 对帖子发短评论 | 补充疑问而不抢回答 | Should | 2 | [S1-007-评论澄清.feature](stories/S1-007-评论澄清.feature) | S1 | 待细化 |
-| S1-008 | Story | 个人资料查看 | 学生 | 查看自己与他人的公开资料 | 了解回答者贡献 | Should | 2 | 【待填】 | S1 | 待细化 |
+| S1-008 | Story | 个人资料查看 | 学生 | 查看自己与他人的公开资料 | 了解回答者贡献 | Should | 2 | [S1-008-查看个人资料.feature](stories/S1-008-查看个人资料.feature) | S1 | 待细化 |
 | S1-009 | Story | 课程成员管理（增量） | 教师/助教 | 审批加入、管理成员 | 保证课程成员范围准确 | Must | 3 | [S1-009-课程成员管理.feature](stories/S1-009-课程成员管理.feature) | S1 | 待细化 |
-| S1-010 | Story | 个人资料编辑（增量） | 学生 | 修改昵称/简介 | 维护个人信息 | Could | 2 | 【待填】 | S1 | 待细化 |
+| S1-010 | Story | 个人资料编辑（增量） | 学生 | 修改昵称/简介 | 维护个人信息 | Could | 2 | [S1-010-编辑个人资料.feature](stories/S1-010-编辑个人资料.feature) | S1 | 待细化 |
 | S2-E1 | Epic | Q&A 领域规则完整实现 | Dev | 实现 Question/Answer/Vote/Comment 全部领域规则 | 支撑问答核心 | Must | — | T-S2-01～T-S2-06 | S2 | 待细化 |
 | S2-E2 | Epic | Q&A 应用层用例 | Dev | 实现提问/回答/投票/评论编排与事件发布 | 领域规则可被接口调用 | Must | — | T-S2-07～T-S2-12 | S2 | 待细化 |
 | S2-011 | Story | 改票（撤销/换边） | 学生 | 修改自己已投的票 | 纠正误投，按增量结算 | Must | 2 | [S2-011-改票.feature](stories/S2-011-改票.feature) | S2 | 待细化 |
@@ -37,8 +37,7 @@
 ## 备注
 
 - S1 的 8-12 条 Story（S1-001～S1-010）需在 S1 启动会前补全验收标准并链接 `.feature` 文件；
-  - 进度：S1-001～S1-007、S1-009、S2-011 已补齐并链接（共 9 个 `.feature`、60 个 Scenario，索引见 [stories/README.md](stories/README.md)）；
-  - 待补：S1-008 个人资料查看、S1-010 个人资料编辑；
+  - 进度：S1-001～S1-010 已**全部**补齐并链接，另含 S2-011 改票（共 11 个 `.feature`、72 个 Scenario，索引见 [stories/README.md](stories/README.md)）；
   - 结构自检：`node scripts/verify-gherkin.mjs`；
 - Epic 不直接领取，拆成对应 T-Sx-xx 开发任务 Issue 后执行；
 - 每周站会复核优先级，Won't 项不进入排期。
