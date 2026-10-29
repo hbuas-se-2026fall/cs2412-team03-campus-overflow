@@ -3,7 +3,7 @@
 > 湖北文理学院《软件工程》课程贯穿项目 · 校园问答平台
 > 当前阶段：**Sprint 0 已完成，进入 Sprint 1（第 3 周）** ｜ 基线版本：`v0.1.0-starter`
 
-[![骨架检查](https://github.com/230593641/campus-overflow-team3/actions/workflows/skeleton-check.yml/badge.svg)](https://github.com/230593641/campus-overflow-team3/actions/workflows/skeleton-check.yml)
+[![骨架检查](https://github.com/hbuas-se-2026fall/cs2412-team03-campus-overflow/actions/workflows/skeleton-check.yml/badge.svg)](https://github.com/hbuas-se-2026fall/cs2412-team03-campus-overflow/actions/workflows/skeleton-check.yml)
 
 ## 这是什么
 
@@ -27,7 +27,7 @@
 - Sprint 目标：S1 身份内核——读懂参考实现，完成 Identity 增量需求选 2 个
 - 本周重点：环境跑通、领取 S1 开发任务、DDD 事件风暴准备
 - 详细计划：[docs/04-计划/Sprint1-计划.md](docs/04-计划/Sprint1-计划.md)
-- 看板：[GitHub Projects](https://github.com/230593641/campus-overflow-team3/projects)
+- 看板：[GitHub Projects](https://github.com/orgs/hbuas-se-2026fall/projects)
 
 ## 五分钟跑起来
 
@@ -46,6 +46,30 @@ cd ../frontend && npm install && npm run dev      # http://localhost:5173
 ```
 
 接口文档：http://localhost:8080/swagger-ui.html
+
+## 测试账号
+
+后端有两套 profile，账号情况完全不一样，联调前先看清：
+
+| profile | 启动方式 | 预置账号 | 适用场景 |
+| --- | --- | --- | --- |
+| `dev`（默认） | 不加参数 | **没有**，只能用注册接口自己建学生账号 | 日常开发，库是干净的 |
+| `demo` | 追加 `-Dspring-boot.run.profiles=demo` | 1 管理员 + 1 教师 + 1 助教 + 3 学生 | 演示、权限联调、验收 |
+
+`demo` profile 的账号，密码统一 `Campus2026`：
+
+| 角色 | 学号 / 工号 | 邮箱 |
+| --- | --- | --- |
+| 管理员 ADMIN | `admin01` | admin@campus.edu.cn |
+| 教师 TEACHER | `T2001` | wang@campus.edu.cn |
+| 助教 TA | `TA3001` | li@campus.edu.cn |
+| 学生 STUDENT | `2023001` / `2023002` / `2023003` | ming@ / hong@ / gang@campus.edu.cn |
+
+三点注意：
+
+1. 这些账号由 `DemoDataSeeder` 通过**应用服务**创建，bcrypt 加盐、密码策略、发件箱事件全走正常链路。**不要用 SQL 直接往 `id_user` 表插**——手写的散列过不了 `PasswordPolicy` 校验，也会绕过领域校验与事件发布，插进去能查不能用。
+2. `demo` 会顺带灌入 1 门课、3 个问题以及投票/认证/采纳/评论/悬赏的完整链路数据，会污染库；要干净库就用 `dev`。
+3. `dev` 目前没有 staff 账号的初始化入口（第一个管理员只能由 `system` 虚拟主体创建），见 #5。
 
 ## 仓库地图
 
