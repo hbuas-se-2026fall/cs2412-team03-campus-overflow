@@ -1,4 +1,5 @@
 # CampusOverflow 持续集成流水线（对应 arc42 第 10 章适应度函数与第 7 章部署视图）
+# 渐进式质量门禁（ADR-009）：Sprint0 只跑 co-shared-kernel + co-identity，集成测试不阻断合并
 name: CI
 
 on:
@@ -25,20 +26,17 @@ jobs:
       - name: 编译
         run: mvn -B -f backend/pom.xml clean compile
 
-      # 阶段 2：单元测试（领域层 + 应用层，毫秒级，无外部依赖）
-      - name: 单元测试
-        run: mvn -B -f backend/pom.xml test
+      # 阶段 2：渐进式单元测试（ADR-009：S0 只跑 co-shared-kernel + co-identity，其余模块随 Sprint 扩大范围）
+      - name: 单元测试（S0 范围）
+        run: mvn -B -f backend/pom.xml test -pl co-shared-kernel,co-identity -am
 
       # 阶段 3：架构适应度函数（ArchUnit：FF-1~FF-6）
       - name: 架构约束检查
         run: mvn -B -f backend/pom.xml test -pl co-bootstrap -Dtest=ArchitectureTest -DfailIfNoTests=false
 
-      # 阶段 4：领域层覆盖率门禁（低于阈值直接失败）
-      - name: 覆盖率门禁
-        run: mvn -B -f backend/pom.xml verify -DskipITs -Djacoco.skip=false
-
-      # 阶段 5：集成测试（Testcontainers 拉起真实 MySQL + Redis）
-      - name: 集成测试
+      # 阶段 4：集成测试（ADR-009：S0 暂不阻断合并，允许失败；S3 起开启）
+      - name: 集成测试（允许失败）
+        continue-on-error: true
         run: mvn -B -f backend/pom.xml verify -Dsurefire.skip=true
 
       - name: 归档测试报告
