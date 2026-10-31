@@ -79,7 +79,7 @@ cd ../frontend && npm install && npm run dev      # http://localhost:5173
 | `frontend/` | React + TypeScript 前端 | 易子恒 |
 | `deploy/` | Dockerfile、compose、Nginx、Prometheus | 易子恒（黄振亚配合 QA 验证） |
 | `docs/team/` | 正式团队章程 v1.0（权威版本） | SM + PO |
-| `docs/01-团队/` | 早期协作章程、DoD、角色分工、会议纪要 | SM |
+| `docs/01-团队/` | DoD、角色分工、角色承诺书、会议纪要（早期草稿章程已标废止） | SM |
 | `docs/02-需求/` | 愿景、访谈、故事地图、Backlog | PO |
 | `docs/03-设计/` | 上下文图、聚合清单、术语表、ADR | 架构负责人 |
 | `docs/04-计划/` | Sprint 计划、风险登记册 | SM |
