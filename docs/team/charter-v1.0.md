@@ -2,7 +2,7 @@
 
 > 团队：Team3 · CampusOverflow
 > 生效日期：2026-10-22
-> 状态：全员待签字
+> 状态：v1.0 已随合并提交进入 `develop`，提交说明含五名成员署名；线下签字栏在站会补齐
 
 ---
 
@@ -30,20 +30,24 @@
 
 ## 三、开发规约
 
-### 分支命名
-- 新功能：`feature/<拼音>-<功能简述>`，例：`feature/kong-hello`
-- 修 bug：`fix/<问题简述>`
+### 分支模型与合并方式
+- 默认开发分支：`develop`（日常集成分支）；`main` 为发布分支，只接收发布节点合并。
+- 新功能：`feature/<issue编号>-<功能简述>`，例：`feature/25-user-story-map`
+- 修 bug：`fix/<issue编号>-<问题简述>`
 - 文档：`docs/<内容>`
-- **禁止直推 main**，所有改动走 PR。
+- **禁止直推 `main` 与 `develop`**，所有改动走 PR。
+- 合并方式：`feature/* → develop` 使用 **Squash merge**（历史紧凑、一个 PR 一个提交）；`develop → main` 发布节点使用 **Merge commit**（保留发布批次记录）；合并后自动删除 head 分支。
+- 保护要求：`develop` 至少 1 名非作者 Approve + `skeleton-check`/`frontend-check` 通过；`main` 至少 2 名 Approve（含 SM 或 PO）+ Code Owner 评审 + 状态检查通过，管理员同样受保护约束。
 
 ### Commit 格式
 ```
-<type>: <描述>
+<type>(<scope>): <描述> #<issue编号>
 ```
-type 用：feat / fix / docs / test / refactor / chore
+type 用：feat / fix / docs / test / refactor / chore；scope 为模块或上下文（如 co-qa、co-identity、frontend、docs、ci）。
 
-例：`feat: Question 聚合 post 方法实现`
-例：`test: 补 QuestionTest 边界用例`
+例：`feat(co-qa): Question 聚合 post 方法实现 #9`
+例：`test(co-qa): 补 QuestionTest 边界用例 #11`
+例：`docs(team): 修订章程分支合并口径 #7`
 
 ### 代码要求
 - 新功能必须带单元测试，本任务涉及模块的测试全绿才能提 PR
@@ -63,11 +67,11 @@ type 用：feat / fix / docs / test / refactor / chore
 
 一个任务算"完成"，必须同时满足：
 
-- [ ] 代码已合并到 main 分支
+- [ ] 代码已通过 PR 合并到 `develop`（发布节点再由 `develop` 合并到 `main`；日常任务不直接合 `main`）
 - [ ] 本任务涉及模块测试全绿
-- [ ] CI（GitHub Actions）全绿
+- [ ] CI 骨架检查（`skeleton-check`、`frontend-check`）全绿
 - [ ] 新功能有对应单元测试
-- [ ] 代码至少被 1 人 review 过
+- [ ] 代码至少被 1 名非作者 review 过（`main` 需 2 名且含 SM/PO）
 - [ ] 文档/注释需要更新的已更新
 - [ ] 看板上的卡片从 In Review 拖到 Done
 
@@ -103,4 +107,4 @@ type 用：feat / fix / docs / test / refactor / chore
 | DV | 黄振亚 | ________ | ________ |
 | DV | 易子恒 | ________ | ________ |
 
-> 最后一个提交此文件的 commit message 包含全员名字。
+> Lab1 要求"提交本章程的最后一个 commit message 包含全员名字"：该合并提交说明已包含孔志敏、刘浩然、肖蕴晨、黄振亚、易子恒五人署名，此表为线下手签留痕位，站会时补齐日期即可。

@@ -4,10 +4,10 @@
 
 | # | 标准 | 自检方式 |
 | --- | --- | --- |
-| 1 | 代码已合并到 main | PR 已 merge |
-| 2 | 单元测试通过，领域层覆盖率 ≥70% | `mvn test` + JaCoCo 报告 |
-| 3 | CI 全绿（骨架检查必绿，全量测试按 Sprint 递减） | Actions 页面 |
-| 4 | 至少 1 名队友 LGTM | PR Review |
+| 1 | 代码已通过 PR 合并到 `develop`（日常任务不直合 `main`；发布节点才由 `develop` 合并到 `main`） | PR 已 merge 且 base 为 develop |
+| 2 | 单元测试通过，领域层覆盖率 ≥70%（S0/S1 以不回退现有覆盖为准） | `mvn test` + JaCoCo 报告 |
+| 3 | 骨架检查必绿（`skeleton-check`/`frontend-check`）；全量 `ci.yml` 在 TODO 测试补齐前允许按 Sprint 递减转绿 | Actions 页面 |
+| 4 | `develop` 至少 1 名非作者 LGTM；`main` 至少 2 名 Approve（含 SM/PO）+ Code Owner | PR Review |
 | 5 | Gherkin 验收标准全部通过 | 对照 `.feature` 文件逐条勾 |
 | 6 | 已部署到测试环境并通过冒烟 | `/actuator/health` 返回 UP |
 | 7 | OpenAPI 契约同步更新 | `docs/api/openapi.yaml` diff |
