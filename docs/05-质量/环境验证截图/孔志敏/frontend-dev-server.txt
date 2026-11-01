@@ -1,0 +1,16 @@
+前端 dev server 采集 · 孔志敏 · 2026-11-01
+
+== npm run dev ==
+$ npm run dev
+> campus-overflow-frontend@1.0.0 dev
+> vite
+
+  VITE v5.4.21  ready in 3908 ms
+  ➜ Local:   http://localhost:5173/
+  ➜ Network: use --host to expose
+
+实测访问 http://localhost:5173/ 与 /login：
+- 首页导航（问题 / 排行榜）、搜索框、最新筛选、热门标签卡片正常渲染；
+- 登录页（登录/注册切换、学号/工号、密码、登录按钮）正常渲染；
+- 问题列表接口显示“请求失败”：本机未起 MySQL 8 / Redis 7（Docker 守护未启动），
+  前端页面启动本身合格，后端联调不在本机环境验证范围，故后端启动列记“未验证”。

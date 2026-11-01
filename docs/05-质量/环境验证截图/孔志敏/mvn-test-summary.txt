@@ -1,0 +1,17 @@
+mvn test 构建汇总 · 孔志敏 · 2026-11-01
+
+== Reactor Summary（27 个模块）==
+CampusOverflow :: Parent ....................... SUCCESS
+CampusOverflow :: Shared Kernel ................ SUCCESS
+Identity（认证）api/domain/application/infrastructure/interfaces  SUCCESS
+Q&A（问答）api/domain/application/infrastructure/interfaces        SUCCESS
+Reputation（积分声望）api/domain/application/infrastructure/interfaces SUCCESS
+Discovery（数据发现）api/domain/application/infrastructure/interfaces SUCCESS
+CampusOverflow :: Bootstrap（启动装配）......... SUCCESS [01:08 min]
+
+[INFO] BUILD SUCCESS
+
+== 说明 ==
+参数 -Dmaven.test.failure.ignore=true：23 个 TODO 桩失败/错误不中断构建；
+编译、ArchUnit 架构测试（ArchitectureTest 通过）、已实现领域测试全部通过；
+本机 JDK21 + Maven 3.9.15 环境可用，构建链路无环境性错误。

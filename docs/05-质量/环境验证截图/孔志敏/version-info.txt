@@ -1,0 +1,40 @@
+环境版本号采集 · 孔志敏 · 2026-11-01
+采集方式：本机真实命令输出；下方为命令与结果原文整理。
+
+== git ==
+$ git --version
+git version 2.53.0.windows.2
+
+== JDK（后端 Maven 实际使用版本）==
+$ echo $env:JAVA_HOME
+D:\soft\Oralcejdk\jdk21\jdk-21.0.10
+$ D:\soft\Oralcejdk\jdk21\jdk-21.0.10\bin\java.exe -version
+java version "21.0.10" 2026-01-20 LTS
+Java(TM) SE Runtime Environment (build 21.0.10+8-LTS-217)
+Java HotSpot(TM) 64-Bit Server VM (build 21.0.10+8-LTS-217, mixed mode, sharing)
+备注：PATH 上第一个 java 是 Oracle java8path shim
+(C:\Program Files (x86)\Common Files\Oracle\Java\java8path\java.exe)，
+裸跑 java -version 无输出；构建与测试统一走 JAVA_HOME 指定的 JDK21。
+
+== Maven ==
+$ mvn -v
+Apache Maven 3.9.15 (98b2cdbfdb5f1ac8781f537ea9acccaed7922349)
+Maven home: D:\soft\apache-maven-3.9.15
+Java version: 21.0.10, vendor: Oracle Corporation, runtime: D:\soft\Oralcejdk\jdk21\jdk-21.0.10
+Default locale: zh_CN, platform encoding: UTF-8
+OS name: "windows 11", version: "10.0", arch: "amd64"
+
+== Node / npm / pnpm（前端）==
+$ node -v
+v22.23.2
+$ npm -v
+10.9.8
+$ pnpm -v
+12.11.2
+
+== Docker ==
+$ docker --version
+Docker version 29.9.2, build a82e528
+$ docker info
+守护进程未启动：连不上 npipe:////./pipe/dockerDesktopLinuxEngine；
+本机 MySQL 8 / Redis 7 未起，后端启动列记“未验证（Docker 守护未起）”，不硬填通过。
