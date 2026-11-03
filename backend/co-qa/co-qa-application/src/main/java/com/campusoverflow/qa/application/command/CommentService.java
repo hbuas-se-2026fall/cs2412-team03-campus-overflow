@@ -13,6 +13,7 @@ import com.campusoverflow.shared.event.EventIds;
 import com.campusoverflow.shared.event.IntegrationEventPublisher;
 import com.campusoverflow.shared.security.Actor;
 import java.time.Clock;
+import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,7 +38,42 @@ public class CommentService {
 
     @Transactional
     public long post(Actor actor, PostCommentCommand cmd) {
-        // TODO(S2)：实现 CommentService.post——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S2)：CommentService.post 尚未实现");
+        TargetType type = cmd.targetType();
+        long targetId = cmd.targetId();
+        // 评论必须先挂在一个存在且未删除的内容上；同时解析出所属问题，供事件与通知使用。
+        long questionId = resolveQuestionId(type, targetId);
+
+        Comment parent = null;
+        if (cmd.parentId() != null) {
+            parent = comments.findById(cmd.parentId())
+                    .orElseThrow(() -> new NotFoundException("QA-4003", "父评论不存在"));
+        }
+
+        Instant now = clock.instant();
+        // 「只支持一层回复」「父评论必须同目标」由聚合根判定（QA-1017 / QA-1018）。
+        Comment saved = comments.save(
+                Comment.post(type, targetId, questionId, actor.userId(), parent, cmd.body(), now));
+
+        events.publish(new CommentPostedEvent(EventIds.next(), now, saved.id(), questionId,
+                actor.userId(), saved.body()));
+        return saved.id();
+    }
+
+    /** 校验被评论内容存在且未删除，返回其所属问题 ID（评论问题本身时即为其自身 ID）。 */
+    private long resolveQuestionId(TargetType type, long targetId) {
+        if (type == TargetType.QUESTION) {
+            Question question = questions.findById(targetId)
+                    .orElseThrow(() -> new NotFoundException("QA-4001", "问题不存在"));
+            if (question.isDeleted()) {
+                throw new NotFoundException("QA-4001", "问题不存在或已被删除");
+            }
+            return question.id();
+        }
+        Answer answer = answers.findById(targetId)
+                .orElseThrow(() -> new NotFoundException("QA-4002", "回答不存在"));
+        if (answer.isDeleted()) {
+            throw new NotFoundException("QA-4002", "回答不存在或已被删除");
+        }
+        return answer.questionId();
     }
 }
