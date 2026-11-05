@@ -37,12 +37,15 @@ public record SearchQuery(String keyword, Long courseId, String tag, SearchSort 
     }
 
     public List<String> terms() {
-        // TODO(S3)：实现 SearchQuery.terms——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchQuery.terms 尚未实现");
+        return keyword == null ? List.of() : terms(keyword);
     }
 
+    /** 按空白切分、去重、最多保留 MAX_TERMS 个词项（超出部分丢弃，避免构造超长 IN 查询）。 */
     private static List<String> terms(String keyword) {
-        // TODO(S3)：实现 SearchQuery.terms——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchQuery.terms 尚未实现");
+        return Arrays.stream(keyword.split("\\s+"))
+                .filter(term -> !term.isBlank())
+                .distinct()
+                .limit(MAX_TERMS)
+                .toList();
     }
 }

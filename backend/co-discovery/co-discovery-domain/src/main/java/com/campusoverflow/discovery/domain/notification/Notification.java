@@ -30,8 +30,7 @@ public class Notification {
 
     public static Notification create(long recipientId, NotificationType type, String title, String link,
                                       String sourceEventId, Instant now) {
-        // TODO(S3)：实现 Notification.create——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：Notification.create 尚未实现");
+        return new Notification(null, recipientId, type, title, link, sourceEventId, false, now);
     }
 
     public static Notification reconstitute(Long id, long recipientId, NotificationType type, String title,
@@ -39,9 +38,12 @@ public class Notification {
         return new Notification(id, recipientId, type, title, link, sourceEventId, read, createdAt);
     }
 
+    /** 只有收件人本人能标记已读；重复标记保持幂等。 */
     public void markRead(long actorId) {
-        // TODO(S3)：实现 Notification.markRead——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：Notification.markRead 尚未实现");
+        if (actorId != recipientId) {
+            throw new ForbiddenException("DIS-3001", "只能标记自己的通知为已读");
+        }
+        this.read = true;
     }
 
     public void assignId(long id) {
