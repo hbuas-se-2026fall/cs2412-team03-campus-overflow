@@ -8,6 +8,11 @@
 #
 # 配好 Secrets 后才会真正部署：DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY / DEPLOY_PATH
 # 详见 docs/ops/runbook.md 的「自动部署」小节。
+#
+# 镜像来自 .github/workflows/publish-images.yml 推送到 GHCR 的 tag。部署前会在
+# runner 侧先 docker pull 校验镜像确实存在且可访问，不再用 `|| true` 静默吞掉
+# 「远端根本没有这个 tag」的错误。目标主机仍需能拉取 GHCR 包（预置 PAT 登录或
+# 把包设为 public），这一步属于主机侧准备，不由 CI 代填凭据。
 
 name: Deploy (Lab8)
 
@@ -21,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: deploy-production
@@ -47,7 +53,6 @@ jobs:
       SSH_USER: ${{ secrets.DEPLOY_USER }}
       SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -65,6 +70,25 @@ jobs:
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: 解析并校验待部署镜像（GHCR）
+        if: steps.gate.outputs.enabled == 'true'
+        id: images
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+        run: |
+          # 命名规则必须与 publish-images.yml 完全一致，否则 pull 会找不到 tag
+          repo_lc="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          backend="ghcr.io/${repo_lc}-backend:${IMAGE_TAG}"
+          web="ghcr.io/${repo_lc}-web:${IMAGE_TAG}"
+          echo "backend=${backend}" >> "$GITHUB_OUTPUT"
+          echo "web=${web}" >> "$GITHUB_OUTPUT"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          # 硬校验：镜像不存在或权限不足就直接失败，不带着坏 tag 去目标机
+          docker pull "$backend"
+          docker pull "$web"
 
       - name: 准备 SSH 密钥
         if: steps.gate.outputs.enabled == 'true'
@@ -86,15 +110,18 @@ jobs:
 
       - name: 拉取镜像并滚动更新
         if: steps.gate.outputs.enabled == 'true'
+        env:
+          BACKEND_IMAGE: ${{ steps.images.outputs.backend }}
+          WEB_IMAGE: ${{ steps.images.outputs.web }}
         run: |
-          # 变量经命令前缀显式传入远端；heredoc 用单引号防止 runner 侧提前展开
+          # 镜像地址经命令前缀显式传入远端；heredoc 用单引号防止 runner 侧提前展开
           # shellcheck disable=SC2086
-          ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "DEPLOY_PATH='$DEPLOY_PATH' IMAGE_TAG='$IMAGE_TAG' bash -s" <<'REMOTE'
+          ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "DEPLOY_PATH='$DEPLOY_PATH' BACKEND_IMAGE='$BACKEND_IMAGE' WEB_IMAGE='$WEB_IMAGE' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$DEPLOY_PATH"
-          export BACKEND_IMAGE="${BACKEND_IMAGE:-campus-overflow-backend:$IMAGE_TAG}"
-          export WEB_IMAGE="${WEB_IMAGE:-campus-overflow-web:$IMAGE_TAG}"
-          docker compose -f deploy/docker-compose.yml --profile observability pull backend web || true
+          export BACKEND_IMAGE WEB_IMAGE
+          # 不再用 || true 吞掉 pull 失败：镜像缺失必须让部署红，避免静默跑旧版本
+          docker compose -f deploy/docker-compose.yml --profile observability pull backend web
           docker compose -f deploy/docker-compose.yml --profile observability up -d --no-build
           docker compose -f deploy/docker-compose.yml --profile observability ps
           REMOTE

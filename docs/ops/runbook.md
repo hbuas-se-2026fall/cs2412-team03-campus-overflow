@@ -226,6 +226,22 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 
 目标机上还需预先放好 `deploy/.env`（含数据库密码），**密码绝不从 CI 写入或出现在日志里**。触发时可选填 `image_tag`，留空则用触发时的 commit SHA 拼接镜像 tag。
 
-部署动作：同步 `deploy/` → `docker compose pull` → `up -d --no-build` → 轮询 `/actuator/health` 最多 150 秒。任一步失败即让任务变红，不会静默留下半更新状态。
+部署动作：runner 侧校验镜像 → 同步 `deploy/` → `docker compose pull` → `up -d --no-build` → 轮询 `/actuator/health` 最多 150 秒。任一步失败即让任务变红，不会静默留下半更新状态。
 
-> 边界说清楚：本仓库 CI 目前只 `docker build` 不 `docker push`，所以远端 registry 里若没有对应 tag，`pull` 会失败（脚本对该步做了容错）。要真正跑通持续部署，还得先在 CI 里补镜像推送与 registry 凭据，那属于 Lab8 之后的范围，本次不虚报已完成。
+### 镜像从哪来（原断链已补上）
+
+旧版本有个实质缺陷：`deploy.yml` 执行 `docker compose pull`，但仓库里没有任何地方把镜像推到 registry，远端必然拉不到，脚本还用 `|| true` 把失败吞了，结果是「部署成功」但实际跑着旧版本。现由 `.github/workflows/publish-images.yml` 补上：
+
+| 事件 | 动作 |
+| --- | --- |
+| PR 到 `develop` / `main` | 只 `docker build` 两个 Dockerfile，**不推送**——这是 #35 / #36 在带 Docker 的 runner 上的实机构建证据 |
+| push 到 `develop` / `main` | 构建并推送到 GHCR，tag 为完整 commit SHA |
+| `workflow_dispatch` | 可指定 tag 手工补发某个版本 |
+
+用仓库自带的 `GITHUB_TOKEN` + `packages: write`，**不新增长期凭据**；镜像名 `ghcr.io/<owner>/<repo>-backend:<tag>` / `-web`，与 `.env.example`、`deploy.yml` 完全一致，`scripts/verify-observability.mjs` 会强制检查两侧命名规则一致、PR 不推送、部署侧不再吞 `pull` 失败。
+
+部署前 `deploy.yml` 先在 runner 侧 `docker login ghcr.io` + `docker pull` 两个镜像，**拉不到就直接让任务变红**，不再带着不存在的 tag 去目标机。
+
+> **仍需注意的主机侧准备**：GHCR 包默认继承仓库可见性（私有）。目标主机要执行 `docker compose pull`，必须能读该包——要么在目标机用有 `read:packages` 权限的 PAT 预先 `docker login ghcr.io`，要么把包设为 public 并绑定仓库。**CI 不会替目标机代填这个凭据，密码也不入库。**
+>
+> **仍未闭环的部分**：`publish-images.yml` 由 push 触发，`deploy.yml` 仍是手动 `workflow_dispatch`，所以「push 到 develop 自动部署」尚未实现；镜像发布与部署解耦是有意为之，避免每次推代码都往一台无人值守的主机上线。本机仍没有 Docker，`docker compose up` 的完整运行验证没做过；PR 上的 `docker build` 只证明镜像能构建，不证明容器能起来、健康检查能过。以上不虚报为已完成。

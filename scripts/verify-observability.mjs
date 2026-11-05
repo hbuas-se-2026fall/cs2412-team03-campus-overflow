@@ -217,6 +217,29 @@ check('运维手册指向的校验脚本存在', () => {
   return `${runbook.length} 字符`;
 });
 
+check('镜像发布链路闭合：build → push → pull，且 PR 不推送', () => {
+  assert(has('.github/workflows/publish-images.yml'), '缺少镜像发布工作流，deploy 的 compose pull 必然落空');
+  const pub = read('.github/workflows/publish-images.yml');
+  assert(pub.includes('packages: write'), '缺少 GHCR 推送权限');
+  assert(pub.includes('docker build -f deploy/backend.Dockerfile'), '后端镜像未在 CI 构建（#35 无实机证据）');
+  assert(pub.includes('docker build -f deploy/frontend.Dockerfile'), '前端镜像未在 CI 构建（#36 无实机证据）');
+  assert(pub.includes('docker push "$BACKEND_IMAGE"'), '只 build 不 push，链路仍是断的');
+  assert(pub.includes('pull_request'), 'PR 未做 Dockerfile 构建校验');
+  assert(/github\.event_name\s*!=\s*'pull_request'/.test(pub), '缺少「PR 只校验不推送」守卫');
+  const dep = read('.github/workflows/deploy.yml');
+  assert(dep.includes('docker pull "$backend"'), '部署前未在 runner 侧硬校验镜像存在');
+  assert(!dep.includes('pull backend web || true'), '仍在用 || true 吞掉 pull 失败，会静默跑旧版本');
+  assert(dep.includes('${repo_lc}-backend') && pub.includes('${repo_lc}-backend'), '发布侧与部署侧镜像命名规则不一致');
+  return 'GHCR + GITHUB_TOKEN，无新增长期凭据';
+});
+
+check('部署工作流模板与正式文件严格同源', () => {
+  assert(has('deploy/deploy.yml.example'), '缺少同源模板');
+  assert(read('deploy/deploy.yml.example') === read('.github/workflows/deploy.yml'),
+    '模板与 .github/workflows/deploy.yml 内容不一致，按模板部署会行为漂移');
+  return '逐字节一致';
+});
+
 for (const line of ok) console.log(line);
 if (bad.length) {
   console.log('\n失败项：');
