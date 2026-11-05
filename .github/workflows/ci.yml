@@ -26,18 +26,39 @@ jobs:
       - name: 编译
         run: mvn -B -f backend/pom.xml clean compile
 
-      # 阶段 2：渐进式单元测试（ADR-009：S0 只跑 co-shared-kernel + co-identity，其余模块随 Sprint 扩大范围）
-      - name: 单元测试（S0 范围）
-        run: mvn -B -f backend/pom.xml test -pl co-shared-kernel,co-identity -am
+      # 阶段 2：渐进式单元测试（ADR-009）。S2 起把已稳定的 Q&A 领域层纳入门禁。
+      # co-qa-application / reputation / discovery 的骨架仍是 TODO，暂不纳入，
+      # 等 PR #72 与对应实现合入、红测试清零后再放开，避免把全队 PR 卡红。
+      - name: 单元测试（S0 + Q&A 领域层）
+        run: mvn -B -f backend/pom.xml test -pl co-shared-kernel,co-identity,co-qa/co-qa-domain -am
+
+      # 阶段 2b：Q&A 覆盖率门禁（Issue #19）
+      # 父 pom 的 domain.coverage.minimum 默认 0，这里用 -D 提到 0.70；
+      # PR #72 合入后模块自带 0.70 阈值，该参数不冲突。
+      # 关键：jacoco:check 找不到 jacoco.exec 时会静默跳过并打印
+      # "All coverage checks have been met."，所以必须额外断言 exec 确实生成，
+      # 否则单测哪天被移出 CI，门禁会悄悄失效而不报错。
+      - name: Q&A 领域层覆盖率门禁
+        run: |
+          mvn -B -f backend/pom.xml verify -pl co-qa/co-qa-domain -am -Ddomain.coverage.minimum=0.70
+          test -s backend/co-qa/co-qa-domain/target/jacoco.exec || {
+            echo "::error::jacoco.exec 缺失或为空：单测未真正执行，覆盖率门禁会静默跳过"
+            exit 1
+          }
 
       # 阶段 3：架构适应度函数（ArchUnit：FF-1~FF-6）
       - name: 架构约束检查
         run: mvn -B -f backend/pom.xml test -pl co-bootstrap -am -Dtest=ArchitectureTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
 
       # 阶段 4：集成测试（ADR-009：S0 暂不阻断合并，允许失败；S3 起开启）
+      # 原来的 -Dsurefire.skip=true 是无效参数（surefire 只认 -DskipTests），
+      # 该步骤其实一直在重跑全部单测，靠 continue-on-error 才没暴露红测试。
+      # 改为 -Djacoco.skip=true，避免重复覆盖阶段 2b 的门禁结果；
+      # 保留 continue-on-error：骨架 IT 尚未全绿，等 #34 的 Testcontainers 链路
+      # 在 runner 上稳定后再改成阻断，这一步的当前状态不虚报为「已通过」。
       - name: 集成测试（允许失败）
         continue-on-error: true
-        run: mvn -B -f backend/pom.xml verify -Dsurefire.skip=true
+        run: mvn -B -f backend/pom.xml verify -Djacoco.skip=true
 
       - name: 归档测试报告
         if: always()
