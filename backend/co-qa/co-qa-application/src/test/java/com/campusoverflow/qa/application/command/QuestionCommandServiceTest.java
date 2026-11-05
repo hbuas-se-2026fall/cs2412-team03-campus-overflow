@@ -114,8 +114,11 @@ class QuestionCommandServiceTest {
     void strangerCannotEdit() {
         long id = service.post(ming, postCommand());
 
+        // 正文必须满足 MarkdownBody 的 20 字下限，否则会在构造值对象时先抛
+        // BusinessRuleException，根本走不到聚合根的权限校验——断言就变成假绿了。
         assertThatThrownBy(() -> service.edit(hong, id,
-                new EditQuestionCommand("红黑树插入后左右旋的判定条件是什么？", "试图篡改正文的其他同学内容在这里。",
+                new EditQuestionCommand("红黑树插入后左右旋的判定条件是什么？",
+                        "试图篡改正文的其他同学内容在这里，补充足够长度的描述以通过正文长度校验。",
                         List.of("红黑树"))))
                 .isInstanceOf(ForbiddenException.class);
         assertThat(questions.findById(id).orElseThrow().title().value()).isEqualTo("红黑树插入后如何判断旋转方向？");
