@@ -23,6 +23,22 @@ on:
         description: "要部署的镜像 tag（留空则用当前 commit SHA）"
         required: false
         default: ""
+  # 自动部署：等 Publish Images 成功后再部署，避免两个 workflow 并行时
+  # deploy 抢在 push 之前 pull 一个还不存在的 tag。image_tag 取
+  # workflow_run.head_sha，与 publish-images.yml 推送用的 GITHUB_SHA 一致。
+  workflow_run:
+    workflows: ["Publish Images (Lab8)"]
+    types: [completed]
+    branches: [develop, main]
+  # 验证阶段专用：本 workflow 从未进过默认分支，GitHub 不会注册它，
+  # 连「手动触发」都会 404。push 到 verify/** 让它产生一次真实 run 记录，
+  # 合并到 develop 后此条件不再匹配，不会额外触发生产部署。
+  push:
+    branches: ['verify/**']
+    paths:
+      - 'deploy/**'
+      - 'scripts/verify-observability.mjs'
+      - '.github/workflows/deploy.yml'
 
 permissions:
   contents: read
@@ -37,7 +53,10 @@ jobs:
     name: 部署配置校验（无需 Secrets）
     runs-on: ubuntu-latest
     steps:
+      # workflow_run 默认检出默认分支 HEAD，需显式对齐到触发发布的那次提交
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -48,6 +67,8 @@ jobs:
     name: 部署到目标主机
     runs-on: ubuntu-latest
     needs: [verify-config]
+    # 上游镜像发布失败时不要部署；手动触发与验证 push 照常走下面的 gate 逻辑
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     env:
       SSH_HOST: ${{ secrets.DEPLOY_HOST }}
       SSH_USER: ${{ secrets.DEPLOY_USER }}
@@ -55,6 +76,8 @@ jobs:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: 检查部署凭据（未配置则安全跳过）
         id: gate
@@ -77,7 +100,8 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
-          IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+          # workflow_run 下 github.sha 是默认分支 HEAD，必须用上游的 head_sha
+          IMAGE_TAG: ${{ inputs.image_tag || github.event.workflow_run.head_sha || github.sha }}
         run: |
           # 命名规则必须与 publish-images.yml 完全一致，否则 pull 会找不到 tag
           repo_lc="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"

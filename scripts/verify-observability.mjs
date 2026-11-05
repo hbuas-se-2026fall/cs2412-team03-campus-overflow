@@ -181,6 +181,22 @@ check('后端 Dockerfile 多阶段 / 非 root / 运行时仅 JRE', () => {
   return stages.join(' -> ');
 });
 
+check('后端 fat jar 命名与 pom finalName 一致、且构建期硬校验', () => {
+  const df = read('deploy/backend.Dockerfile');
+  const pom = read('backend/co-bootstrap/pom.xml');
+  const m = pom.match(/<finalName>([^<]+)<\/finalName>/);
+  assert(m, 'co-bootstrap/pom.xml 未声明 finalName，无法核对 jar 名');
+  const jar = `${m[1]}.jar`;
+  assert(df.includes(jar), `Dockerfile 未引用 ${jar}：compose 联调曾因 jar 名不匹配导致容器启动即退出`);
+  // 只看真正的 COPY 指令：注释里保留旧写法作为故障复盘说明，不应误报
+  assert(!/^COPY\s+--from=build\s+\S*co-bootstrap-\*\.jar/m.test(df),
+    'COPY 指令仍在用与 finalName 不匹配的通配 jar 名');
+  assert(/test -f\s+\S*campus-overflow\.jar/.test(df), '缺少构建期 jar 存在性硬校验，会再次静默产出坏镜像');
+  assert(read('.github/workflows/publish-images.yml').includes('test -s /app/app.jar'),
+    'PR 冒烟未校验镜像内 jar 是否存在');
+  return `finalName=${m[1]}，构建期 test -f + 镜像内 test -s 双重校验`;
+});
+
 check('前端 package.json 与 lock 一致（npm ci 不会失败）', () => {
   const pkg = JSON.parse(read('frontend/package.json'));
   const lock = JSON.parse(read('frontend/package-lock.json'));
@@ -231,6 +247,17 @@ check('镜像发布链路闭合：build → push → pull，且 PR 不推送', (
   assert(!dep.includes('pull backend web || true'), '仍在用 || true 吞掉 pull 失败，会静默跑旧版本');
   assert(dep.includes('${repo_lc}-backend') && pub.includes('${repo_lc}-backend'), '发布侧与部署侧镜像命名规则不一致');
   return 'GHCR + GITHUB_TOKEN，无新增长期凭据';
+});
+
+check('自动部署链路：等镜像发布成功后触发，tag 与上游对齐', () => {
+  const dep = read('.github/workflows/deploy.yml');
+  assert(dep.includes('workflow_run:'), '缺少 workflow_run 自动部署触发，push develop 不会部署');
+  assert(/workflows:\s*\["Publish Images \(Lab8\)"\]/.test(dep), '自动部署未绑定镜像发布工作流');
+  assert(/types:\s*\[completed\]/.test(dep), '未等待上游完成就部署，会 pull 到不存在的 tag');
+  assert(dep.includes('github.event.workflow_run.conclusion'), '上游发布失败时未阻断部署');
+  assert(dep.includes('github.event.workflow_run.head_sha'),
+    '未用上游 head_sha 作为镜像 tag / checkout ref，会部署到错误版本');
+  return 'workflow_run(completed) + head_sha 对齐 + 上游失败不部署';
 });
 
 check('部署工作流模板与正式文件严格同源', () => {

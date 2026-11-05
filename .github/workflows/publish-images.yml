@@ -92,6 +92,13 @@ jobs:
           [ "$uid" != "0" ] || { echo "::error::后端镜像仍以 root 运行，不符合 #35"; exit 1; }
           docker run --rm --entrypoint sh "$BACKEND_IMAGE" -c 'java -version'
 
+          # #35：镜像里必须真的有可执行 jar。之前用 --entrypoint sh 覆盖了
+          # ENTRYPOINT，jar 名不匹配时 build 成功、uid/java 冒烟也全绿，
+          # 直到 compose 真启动才报 Unable to access jarfile app.jar。
+          docker run --rm --entrypoint sh "$BACKEND_IMAGE" \
+            -c 'test -s /app/app.jar && ls -l /app/app.jar' \
+            || { echo "::error::镜像内缺少 /app/app.jar，容器无法启动"; exit 1; }
+
           # #36：nginx 反代配置语法校验。
           # nginx -t 会在检查阶段解析 proxy_pass 里的静态主机名，而 `backend` 是
           # compose 服务名，独立 docker run 的容器里没有该 DNS。这里只补 hosts 映射

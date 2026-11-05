@@ -194,6 +194,21 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 - 单独 `docker run` 校验配置时会失败。CI 里的做法是加 `--add-host backend:127.0.0.1` 让语法检查跑完，**不改生产配置**。
 - 若生产环境仍偶发（例如 backend 容器换了 IP、nginx 缓存了旧解析），根治方式是改用 Docker 内嵌 DNS + 变量形式：`resolver 127.0.0.11 valid=30s;` 配合 `set $backend backend:8080;` 与 `proxy_pass http://$backend`，让上游在请求时动态解析。这属于后续优化，当前未改。
 
+### 6.7 backend 容器启动即退出：`Unable to access jarfile app.jar`
+
+首次在 CI runner 上真跑 `docker compose up` 时抓到的真实缺陷，**PR 级 `docker build` 检查没发现它**：构建阶段 `docker build` 成功，容器一启动就 `co-backend exited (1)`。
+
+根因：`co-bootstrap/pom.xml` 声明了 `<finalName>campus-overflow</finalName>`，Spring Boot repackage 后的 fat jar 是 `campus-overflow.jar`；旧 `backend.Dockerfile` 却写 `COPY --from=build /src/co-bootstrap/target/co-bootstrap-*.jar app.jar`。通配符一个都没匹配上，`app.jar` 压根不存在，而 Docker 的 `COPY` 通配符无匹配时并不会让构建失败。
+
+之前的镜像冒烟用 `docker run --entrypoint sh ... -c 'java -version'` 覆盖了 ENTRYPOINT，只验证了 JRE 存在，**从没真正执行过 `java -jar app.jar`**，所以「构建成功 + 冒烟通过」是假绿。
+
+修复与防回归：
+
+- 构建阶段显式 `cp target/campus-overflow.jar /app.jar` 并 `test -f /app.jar`，jar 名再变化会当场让镜像构建红，而不是静默产出坏镜像。
+- `deploy/backend.Dockerfile` 的 `COPY --from=build /app.jar app.jar` 用固定路径，不再依赖通配符。
+- `publish-images.yml` 的 PR 冒烟增加 `test -s /app/app.jar`；`scripts/verify-observability.mjs` 增加一条规则，从 `pom.xml` 读 `finalName` 反查 Dockerfile，防止两侧再次漂移。
+- 教训：验证镜像必须包含「按真实 ENTRYPOINT 启动」或至少检查启动产物存在，只跑 `--entrypoint sh` 里的零散命令不足以证明镜像可运行。
+
 ## 7. 告警与值班
 
 - 规则定义：`deploy/prometheus/rules.yml`（7 条，覆盖 5xx 错误率、P95、实例存活、发件箱积压/死信、声誉对账、JVM 堆水位）。
@@ -217,10 +232,18 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 
 工作流已正式落地到 **`.github/workflows/deploy.yml`**，`deploy/deploy.yml.example` 保留为同源模板。此前提交用的 GitHub token 只有 `repo` scope、缺 `workflow` scope，被 GitHub 拒绝推送任何 workflow 文件改动；补授权（`gh auth refresh -s workflow`）后已由本 PR 一并提交，不再是待办。
 
-它是**手动触发**（`workflow_dispatch`），不会随 push 自动上线。课程仓库没有长期在线的部署主机，所以设计成：
+触发方式有三种，各自承担不同职责：
 
-- `verify-config` 任务永远可跑，执行 `node scripts/verify-observability.mjs`，不需要任何 Secret；这是 Lab8 在无 Docker 环境下也能拿到的 CI 证据。
-- `deploy` 任务先检查必备 Secret，缺任意一个就打印 `::notice::` 并**安全跳过**，不会把 CI 变红，也不会假装部署成功。
+| 触发 | 用途 |
+| --- | --- |
+| `workflow_run`：上游 `Publish Images (Lab8)` 在 `develop` / `main` **成功完成** | 「push 到 develop 自动部署」。用 `workflow_run.head_sha` 作为镜像 tag，与发布侧的 `GITHUB_SHA` 严格对齐；上游失败或仍在构建时不会抢跑，避免 pull 一个还不存在的 tag |
+| `workflow_dispatch` | 人工指定 `image_tag` 补发/回滚某个版本 |
+| push 到 `verify/**` | 仅用于验收阶段产生一次真实 run 记录：本 workflow 从未进过默认分支时，GitHub 不会注册它，连手动触发入口都找不到。合并进默认分支后该条件不再匹配，不会误触发生产部署 |
+
+课程仓库没有长期在线的部署主机，所以设计成：
+
+- `verify-config` 任务永远可跑，执行 `node scripts/verify-observability.mjs`，不需要任何 Secret；这是 Lab8 在无 Docker 环境下也能拿到的 CI 证据。`workflow_run` 下显式 `checkout` 到上游 `head_sha`，避免默认检出到默认分支 HEAD 导致配置版本错位。
+- `deploy` 任务先检查必备 Secret，缺任意一个就打印 `::notice::` 并**安全跳过**，不会把 CI 变红，也不会假装部署成功；上游发布失败时整个 job 不执行。
 - 不依赖第三方 Action，只用 runner 自带的 `ssh` / `scp` / `docker`。
 
 真正部署前，在仓库 Settings → Secrets and variables → Actions 里配置：
@@ -252,4 +275,8 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 
 > **仍需注意的主机侧准备**：GHCR 包默认继承仓库可见性（私有）。目标主机要执行 `docker compose pull`，必须能读该包——要么在目标机用有 `read:packages` 权限的 PAT 预先 `docker login ghcr.io`，要么把包设为 public 并绑定仓库。**CI 不会替目标机代填这个凭据，密码也不入库。**
 >
-> **仍未闭环的部分**：`publish-images.yml` 由 push 触发，`deploy.yml` 仍是手动 `workflow_dispatch`，所以「push 到 develop 自动部署」尚未实现；镜像发布与部署解耦是有意为之，避免每次推代码都往一台无人值守的主机上线。本机仍没有 Docker，`docker compose up` 的完整运行验证没做过；PR 上的 `docker build` 只证明镜像能构建，不证明容器能起来、健康检查能过。以上不虚报为已完成。
+> **仍未闭环的部分（如实标注）**：
+> 1. `workflow_run` 只在**默认分支**上的工作流定义生效。本 workflow 目前仍只存在于 PR 分支与 `verify/**`，所以在 #73 合并进 `develop` 之前，「push develop 自动部署」只是代码就绪、没有生产 run 证据；合并后由 SM 配好 Secrets 才能真正上线。
+> 2. 手动 `workflow_dispatch` 指定 `image_tag` 补发时，自动部署侧按 `head_sha` 取 tag，两者不一致会让 `docker pull` 直接变红（设计如此，不静默回退）。补发请用 deploy 自己的 `workflow_dispatch`。
+> 3. 本机仍没有 Docker；但 **GitHub Actions 的 ubuntu runner 自带 Docker**，`compose-smoke.yml` 已在 `verify/full-stack` 集成分支真跑过全栈 `docker compose up`（详见 6.7 与 CI 日志）。这不等于有长期在线的生产主机，`deploy.yml` 的 SSH 真机部署路径仍未实跑。
+> 4. #35 的「镜像 <200MB」实测 209MB 未达标，CI 用 `::warning::` 主动标注，不伪装达标。

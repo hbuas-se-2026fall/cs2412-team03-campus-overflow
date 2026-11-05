@@ -1,0 +1,158 @@
+# Issue #37：docker compose 全栈联调（在带 Docker 的 runner 上真跑）
+#
+# 本机无 Docker，静态配置校验（scripts/verify-observability.mjs）只能证明
+# 「文件写得对」，证明不了「服务真的能起来、请求真的能打通」。这个工作流补上后者：
+#   mysql / redis / backend / web / prometheus / grafana 一次性 up -d --build，
+#   再逐项验证健康探针、首页、SPA fallback、/api 反代、actuator 暴露边界、
+#   Prometheus 抓取目标与 Grafana datasource 自动加载。
+#
+# 刻意用 prod profile 而不是 prod,demo：DemoDataSeeder 在无 catch 的情况下调用
+# BountyService 等 Sprint 3 骨架，会让应用启动失败；#37 的验收范围是基础设施
+# 联调，不是业务演示数据，因此这里显式关掉 demo，避免把骨架缺口误报成编排故障。
+#
+# 只在集成分支 push / 手动触发时运行，不给待审 PR 增加检查项。
+
+name: Compose Smoke (Lab8 #37)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['verify/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COMPOSE_FILE: deploy/docker-compose.yml
+  ENV_FILE: deploy/.env
+
+jobs:
+  full-stack:
+    name: 全栈联调 / 健康检查与反代
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 生成联调环境变量
+        run: |
+          # 走真实用法：从 .env.example 派生 deploy/.env，顺便验证样例可直接使用
+          cp .env.example "$ENV_FILE"
+          sed -i 's/^SPRING_PROFILES=.*/SPRING_PROFILES=prod/' "$ENV_FILE"
+          sed -i 's/^MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD=smoke-root-pwd/' "$ENV_FILE"
+          sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=smoke-app-pwd/' "$ENV_FILE"
+          sed -i 's/^CO_FIELD_KEY=.*/CO_FIELD_KEY=GB7LwwDgcWpslCMsYtIkTbDrzER+IbjJwhtSu7LPz1I=/' "$ENV_FILE"
+          sed -i 's/^GRAFANA_PASSWORD=.*/GRAFANA_PASSWORD=smoke-grafana-pwd/' "$ENV_FILE"
+          echo "--- 生效的 deploy/.env（不含注释）---"
+          grep -v '^#' "$ENV_FILE" | grep -v '^$'
+          echo "--- compose 配置渲染校验 ---"
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile observability config --quiet
+
+      - name: 启动全栈
+        run: |
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile observability up -d --build
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile observability ps
+
+      - name: 等待后端 readiness
+        run: |
+          set -eu
+          for i in $(seq 1 36); do
+            if curl -fsS http://localhost:8080/actuator/health/readiness > /tmp/readiness.json 2>/dev/null; then
+              echo "后端 readiness 通过（第 ${i} 次探测）"
+              cat /tmp/readiness.json
+              break
+            fi
+            if [ "$i" -eq 36 ]; then
+              echo "::error::后端 180 秒内未就绪"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "=== 容器健康状态 ==="
+          for c in co-mysql co-redis co-backend co-web co-prometheus co-grafana; do
+            printf '%-18s %s\n' "$c" "$(docker inspect --format '{{.State.Status}} / {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$c" 2>/dev/null || echo missing)"
+          done
+
+      - name: 前端首页与 SPA fallback
+        run: |
+          set -eu
+          echo "=== / ==="
+          curl -fsS http://localhost/ -o /tmp/index.html
+          grep -qi '<html\|<!doctype html' /tmp/index.html
+          echo "首页返回 $(wc -c < /tmp/index.html) 字节，含 HTML 文档"
+          echo "=== /questions/any-spa-route（fallback）==="
+          code=$(curl -sS -o /tmp/spa.html -w '%{http_code}' http://localhost/questions/any-spa-route)
+          echo "SPA 路由 HTTP $code"
+          [ "$code" = "200" ] || { echo "::error::SPA fallback 未返回 200"; exit 1; }
+          cmp -s /tmp/index.html /tmp/spa.html && echo "回退到 index.html ✅" \
+            || { echo "::error::SPA 路由未回退到 index.html"; exit 1; }
+
+      - name: 健康检查与 actuator 暴露边界
+        run: |
+          set -eu
+          echo "=== /actuator/health（Nginx 精确放行）==="
+          body=$(curl -fsS http://localhost/actuator/health)
+          echo "$body"
+          echo "$body" | grep -q '"status":"UP"'
+          echo "=== /actuator/prometheus 不应经 Nginx 暴露 ==="
+          code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost/actuator/prometheus)
+          echo "宿主机 80 端口 /actuator/prometheus -> HTTP $code"
+          [ "$code" = "404" ] || echo "::warning::预期 404，实际 $code，请复核 Nginx 暴露边界"
+          echo "=== /actuator/prometheus 容器内可访问（Prometheus 抓取路径）==="
+          curl -fsS http://localhost:8080/actuator/prometheus | head -3
+
+      - name: API 反向代理连通性
+        run: |
+          set -eu
+          # 用一个不存在的 API 路径：能转发到 Spring 会得到 404，
+          # Nginx 连不上 backend 才会是 502/503/504。
+          set +e
+          code=$(curl -sS -o /tmp/api.out -w '%{http_code}' http://localhost/api/v1/__smoke__)
+          rc=$?
+          set -e
+          [ "$rc" -eq 0 ] || code="000"
+          echo "/api/v1/__smoke__ -> HTTP $code"
+          case "$code" in
+            502|503|504|000) echo "::error::/api 反代未连到 backend（HTTP $code）"; cat /tmp/api.out; exit 1 ;;
+          esac
+          echo "反代已把请求送达 backend ✅（业务返回 $code，非网关错误）"
+
+      - name: 监控栈（Prometheus / Grafana）
+        run: |
+          set -eu
+          echo "=== Prometheus ==="
+          curl -fsS http://localhost:9090/-/healthy && echo
+          # 等第一次抓取完成，最多 60 秒
+          up=""
+          for i in $(seq 1 12); do
+            up=$(curl -fsS 'http://localhost:9090/api/v1/targets?state=active' \
+                 | python3 -c 'import sys,json; d=json.load(sys.stdin)["data"]["activeTargets"]; print(",".join(t.get("labels",{}).get("job","?")+"="+t["health"] for t in d))' 2>/dev/null || echo "")
+            echo "抓取目标: ${up:-尚未就绪}"
+            case "$up" in *campus-overflow=up*) break ;; esac
+            sleep 5
+          done
+          case "$up" in *campus-overflow=up*) echo "campus-overflow 抓取目标 UP ✅" ;;
+            *) echo "::error::Prometheus 未成功抓取 backend 指标"; exit 1 ;; esac
+
+          echo "=== Grafana ==="
+          curl -fsS http://localhost:3000/api/health && echo
+          curl -fsS -u "admin:smoke-grafana-pwd" http://localhost:3000/api/datasources \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin); print("datasources:", [x["name"]+"/"+x["type"] for x in d]); sys.exit(0 if any(x["type"]=="prometheus" for x in d) else 1)' \
+            || { echo "::error::Grafana provisioning 未自动加载 Prometheus 数据源"; exit 1; }
+          echo "Prometheus 数据源自动加载 ✅"
+
+      - name: 失败时导出容器日志
+        if: failure()
+        run: |
+          echo "=== compose ps ==="
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile observability ps || true
+          echo "=== 容器日志（末 200 行）==="
+          docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile observability logs --no-color --tail=200 || true
+
+      - name: 清理
+        if: always()
+        run: docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile observability down -v --remove-orphans
