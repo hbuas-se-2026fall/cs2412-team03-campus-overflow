@@ -204,7 +204,7 @@ check('部署工作流模板具备「无 Secret 可验 / 缺 Secret 跳过」结
   assert(wf.includes('workflow_dispatch'), '不是手动触发，会在没配 Secrets 时自动跑红');
   assert(wf.includes('verify-config'), '缺少无需 Secret 的配置校验任务');
   assert(wf.includes('enabled=false'), '缺少「缺 Secrets 安全跳过」分支');
-  // 模板必须留在 deploy/ 下：一旦被直接放进 .github/workflows/，无 workflow scope 的 token 无法推送
+  // 模板与正式工作流同源；返回当前落地状态，合并前后都能给出准确结论
   return existsSync(join(ROOT, '.github/workflows/deploy.yml')) ? '已落地到 .github/workflows/' : '模板待复制到 .github/workflows/';
 });
 

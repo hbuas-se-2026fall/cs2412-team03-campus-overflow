@@ -199,7 +199,7 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 | #35 | 后端 Dockerfile + .dockerignore | `deploy/backend.Dockerfile`（多阶段 / 非 root / JRE；依赖缓存层未生效已在文件头如实标注）、仓库根 `.dockerignore` |
 | #36 | 前端 Dockerfile + nginx.conf | `deploy/frontend.Dockerfile`（补 `package-lock.json` + 改用 `npm ci`，修复构建不可复现）、`deploy/nginx.conf` |
 | #37 | docker-compose.yml + .env.example | `deploy/docker-compose.yml`、`.env.example` |
-| #38 | 部署工作流模板 | `deploy/deploy.yml.example`（复制为 `.github/workflows/deploy.yml` 后生效） |
+| #38 | 部署工作流 | `.github/workflows/deploy.yml`（同源模板 `deploy/deploy.yml.example`） |
 | #39 | dashboard.json + rules.yml | `deploy/grafana/dashboards/campus-overflow.json`、`deploy/prometheus/rules.yml` |
 | #40 | 运维手册 | 本文件 |
 
@@ -207,7 +207,7 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 
 ## 9. 自动部署（Issue #38）
 
-工作流定义放在 `deploy/deploy.yml.example`。**启用前先复制到 `.github/workflows/deploy.yml`**——当前用于提交的 GitHub token 只有 `repo` scope，缺 `workflow` scope，GitHub 会拒绝 OAuth App 推送任何改动 `.github/workflows/*.yml` 的提交；要么由有权限的账号在网页上新建该文件，要么先执行 `gh auth refresh -s workflow` 补授权再复制。本节以下描述的是复制生效后的行为。
+工作流已正式落地到 **`.github/workflows/deploy.yml`**，`deploy/deploy.yml.example` 保留为同源模板。此前提交用的 GitHub token 只有 `repo` scope、缺 `workflow` scope，被 GitHub 拒绝推送任何 workflow 文件改动；补授权（`gh auth refresh -s workflow`）后已由本 PR 一并提交，不再是待办。
 
 它是**手动触发**（`workflow_dispatch`），不会随 push 自动上线。课程仓库没有长期在线的部署主机，所以设计成：
 
