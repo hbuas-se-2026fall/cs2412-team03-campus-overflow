@@ -1,0 +1,16 @@
+# Grafana 自动配置数据源（Lab8 / Issue #39）
+# uid 固定为 prometheus，dashboard.json 中的 datasource.uid 与之对应，
+# 避免 Grafana 生成随机 uid 导致面板显示 "Datasource not found"。
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
