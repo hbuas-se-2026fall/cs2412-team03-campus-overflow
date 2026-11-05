@@ -31,7 +31,23 @@ export function QuestionDetailPage() {
   return (
     <div className="layout">
       <article>
-        <h1>{q.title}</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1>{q.title}</h1>
+          <div>
+            {/* 3. 使用后端返回的 permissions 进行判断 */}
+            {q.permissions.canEdit && (
+                <button style={{ marginRight: 8 }} onClick={() => alert('编辑功能待实现')}>编辑</button>
+            )}
+            {q.permissions.canDelete && (
+                <button style={{ color: 'red' }} onClick={() => {
+                  if (window.confirm('确定要删除这个问题吗？')) {
+                    act(() => api.deleteQuestion(q.id));
+                  }
+                }}>删除</button>
+            )}
+          </div>
+        </div>
+
         <p className="muted">
           {q.author.displayName} · {new Date(q.createdAt).toLocaleString('zh-CN')} · {q.viewCount} 次浏览
           {q.course && <> · 课程 {q.course.name}</>}

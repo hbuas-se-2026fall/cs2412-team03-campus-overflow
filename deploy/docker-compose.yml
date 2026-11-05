@@ -38,6 +38,9 @@ services:
       retries: 20
 
   backend:
+    # 同时给 image 打 tag：本地 --build 生成 :local，部署时由 BACKEND_IMAGE 指定远端 tag，
+    # 回滚只需把 .env 里的 tag 换成上一个版本后 pull（见 docs/ops/runbook.md）。
+    image: ${BACKEND_IMAGE:-campus-overflow-backend:local}
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
@@ -62,19 +65,23 @@ services:
       retries: 30
 
   web:
+    image: ${WEB_IMAGE:-campus-overflow-web:local}
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
     container_name: co-web
     depends_on:
-      backend: { condition: service_started }
+      backend: { condition: service_healthy }
     ports: ["80:80"]
 
+  # 监控栈通过 --profile observability 启用（Issue #37 / #39）
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: co-prometheus
     profiles: ["observability"]
-    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    volumes:
+      - "./prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "./prometheus/rules.yml:/etc/prometheus/rules.yml:ro"
     ports: ["9090:9090"]
 
   grafana:
@@ -82,10 +89,15 @@ services:
     container_name: co-grafana
     profiles: ["observability"]
     environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
     depends_on: [prometheus]
     ports: ["3000:3000"]
-    volumes: ["grafana-data:/var/lib/grafana"]
+    volumes:
+      - "grafana-data:/var/lib/grafana"
+      - "./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro"
+      - "./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro"
+      - "./grafana/dashboards:/var/lib/grafana/dashboards:ro"
 
 volumes:
   mysql-data:
