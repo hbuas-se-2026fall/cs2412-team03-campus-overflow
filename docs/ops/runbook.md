@@ -196,12 +196,14 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 
 | Issue | 输出物 | 位置 |
 | --- | --- | --- |
-| #35 | 后端 Dockerfile + .dockerignore | `deploy/backend.Dockerfile`、仓库根 `.dockerignore` |
-| #36 | 前端 Dockerfile + nginx.conf | `deploy/frontend.Dockerfile`、`deploy/nginx.conf` |
+| #35 | 后端 Dockerfile + .dockerignore | `deploy/backend.Dockerfile`（多阶段 / 非 root / JRE；依赖缓存层未生效已在文件头如实标注）、仓库根 `.dockerignore` |
+| #36 | 前端 Dockerfile + nginx.conf | `deploy/frontend.Dockerfile`（补 `package-lock.json` + 改用 `npm ci`，修复构建不可复现）、`deploy/nginx.conf` |
 | #37 | docker-compose.yml + .env.example | `deploy/docker-compose.yml`、`.env.example` |
 | #38 | 部署工作流模板 | `deploy/deploy.yml.example`（复制为 `.github/workflows/deploy.yml` 后生效） |
 | #39 | dashboard.json + rules.yml | `deploy/grafana/dashboards/campus-overflow.json`、`deploy/prometheus/rules.yml` |
 | #40 | 运维手册 | 本文件 |
+
+无 Docker 环境下的验收替代：`node scripts/verify-observability.mjs` 共 **14 项静态校验**，覆盖 #35/#36/#37/#39 的关键约束——前端 lock 与 `package.json` 一致、Dockerfile 多阶段与非 root、Nginx 不暴露整个 `/actuator/`、`rule_files` 路径与挂载一致、监控指标在源码有注册点、compose 变量在 `.env.example` 声明。**它不能替代 `docker compose up` 的运行验证。**
 
 ## 9. 自动部署（Issue #38）
 

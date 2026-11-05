@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Lab8 可观测性 / 部署配置校验（Issue #37 / #38 / #39 / #40）
+ * Lab8 可观测性 / 部署配置校验（Issue #35 / #36 / #37 / #38 / #39 / #40）
  *
  * 为什么存在：本机和 CI 都不一定有 Docker，没法真的 `docker compose up` 验证。
  * 这个脚本零依赖，兜住最容易出错、且肉眼很难发现的几类配置漂移：
@@ -9,7 +9,11 @@
  *   3. Prometheus rule_files 路径与 compose 挂载路径对不上（规则静默不生效）；
  *   4. compose 引用的环境变量没在 .env.example 里（照样例填等于密码配置失效）；
  *   5. Grafana provisioning / dashboard 目录没挂载（看板静默不出现）；
- *   6. .dockerignore 漏掉 .git / .env / target / node_modules（构建上下文泄密）。
+ *   6. .dockerignore 漏掉 .git / .env / target / node_modules（构建上下文泄密）；
+ *   7. 前端 Dockerfile 漏拷 package-lock.json / 用 npm install（构建不可复现）；
+ *   8. 后端 Dockerfile 退化成单阶段、root 运行或把 JDK 打进运行时镜像；
+ *   9. frontend/package.json 与 lock 不一致（npm ci 会直接失败）；
+ *  10. Nginx 把整个 /actuator/ 暴露到公网。
  *
  * 它只做配置层校验，不替代 `docker compose up` 的运行验证。
  *
@@ -158,6 +162,41 @@ check('.dockerignore 覆盖敏感与超大目录', () => {
   const missing = must.filter((m) => !text.includes(m));
   assert(missing.length === 0, `缺少 ${missing.join(', ')}`);
   return must.join(' / ');
+});
+
+check('前端 Dockerfile 使用 lock 文件与 npm ci（构建可复现）', () => {
+  const df = read('deploy/frontend.Dockerfile');
+  assert(/package-lock\.json/.test(df), '没有复制 package-lock.json，npm 会重新解析依赖树');
+  assert(/\bnpm ci\b/.test(df), '没有用 npm ci，lock 文件不会生效');
+  assert((df.match(/^FROM /gm) || []).length >= 2, '不是多阶段构建');
+  return 'lock + npm ci + 多阶段';
+});
+
+check('后端 Dockerfile 多阶段 / 非 root / 运行时仅 JRE', () => {
+  const df = read('deploy/backend.Dockerfile');
+  assert((df.match(/^FROM /gm) || []).length >= 2, '不是多阶段构建');
+  assert(/^USER\s+(?!root\b)\S+/m.test(df), '运行时以 root 启动');
+  const stages = (df.match(/^FROM\s+\S+/gm) || []).map((s) => s.split(/\s+/)[1]);
+  assert(stages.some((s) => /jre|runtime/i.test(s)), '运行时镜像不是 JRE');
+  return stages.join(' -> ');
+});
+
+check('前端 package.json 与 lock 一致（npm ci 不会失败）', () => {
+  const pkg = JSON.parse(read('frontend/package.json'));
+  const lock = JSON.parse(read('frontend/package-lock.json'));
+  const root = lock.packages && lock.packages[''];
+  assert(root, 'lock 文件缺少 packages[""] 根条目');
+  assert(JSON.stringify(root.dependencies) === JSON.stringify(pkg.dependencies), 'dependencies 与 lock 不一致');
+  assert(JSON.stringify(root.devDependencies) === JSON.stringify(pkg.devDependencies), 'devDependencies 与 lock 不一致');
+  return `${Object.keys(pkg.dependencies || {}).length} deps / ${Object.keys(pkg.devDependencies || {}).length} devDeps`;
+});
+
+check('Nginx 只暴露精确 health、API 反代指向 backend', () => {
+  const conf = read('deploy/nginx.conf');
+  assert(/location\s*=\s*\/actuator\/health/.test(conf), 'health 端点未做精确匹配');
+  assert(!/location\s+\/actuator\//.test(conf), '把整个 /actuator/ 暴露到公网了');
+  assert(/proxy_pass\s+http:\/\/backend:8080/.test(conf), 'API 未反代到 backend:8080');
+  return '精确 health + backend:8080 反代';
 });
 
 check('部署工作流模板具备「无 Secret 可验 / 缺 Secret 跳过」结构', () => {
