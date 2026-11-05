@@ -92,8 +92,11 @@ jobs:
           [ "$uid" != "0" ] || { echo "::error::后端镜像仍以 root 运行，不符合 #35"; exit 1; }
           docker run --rm --entrypoint sh "$BACKEND_IMAGE" -c 'java -version'
 
-          # #36：nginx 反代配置语法校验，不需要后端在线
-          docker run --rm --entrypoint sh "$WEB_IMAGE" -c 'nginx -t'
+          # #36：nginx 反代配置语法校验。
+          # nginx -t 会在检查阶段解析 proxy_pass 里的静态主机名，而 `backend` 是
+          # compose 服务名，独立 docker run 的容器里没有该 DNS。这里只补 hosts 映射
+          # 让语法检查能跑完，不改生产配置（compose 网络里 backend 本来就可解析）。
+          docker run --rm --add-host backend:127.0.0.1 --entrypoint sh "$WEB_IMAGE" -c 'nginx -t'
 
           # #35 验收要求镜像 <200MB；用真实体积给结论，不估算、也不静默放过
           size_mb="$(docker image inspect "$BACKEND_IMAGE" --format '{{.Size}}' | awk '{printf "%.0f", $1/1024/1024}')"

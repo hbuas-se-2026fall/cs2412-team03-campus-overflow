@@ -186,6 +186,14 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 
 `application.yml` 的 `management.endpoints.web.exposure.include` 必须包含 `prometheus`；Nginx 只放行 `/actuator/health`，所以从**宿主机 80 端口**访问 `/actuator/prometheus` 必然 404，要用 8080 直连或容器内 `backend:8080`。
 
+### 6.6 web 容器起不来：`host not found in upstream "backend"`
+
+这个报错是 CI 里真跑 `nginx -t` 时抓到的，不是配置语法错。`deploy/nginx.conf` 用 `proxy_pass http://backend:8080`，而 `backend` 是 **compose 服务名**；nginx 在配置检查 / 启动阶段会解析这个静态主机名，只要当时 DNS 里没有 `backend` 就直接 `[emerg]` 退出。
+
+- 在 compose 网络内正常：`web` 已配置 `depends_on: backend: condition: service_healthy`，backend 先就绪，DNS 可解析。
+- 单独 `docker run` 校验配置时会失败。CI 里的做法是加 `--add-host backend:127.0.0.1` 让语法检查跑完，**不改生产配置**。
+- 若生产环境仍偶发（例如 backend 容器换了 IP、nginx 缓存了旧解析），根治方式是改用 Docker 内嵌 DNS + 变量形式：`resolver 127.0.0.11 valid=30s;` 配合 `set $backend backend:8080;` 与 `proxy_pass http://$backend`，让上游在请求时动态解析。这属于后续优化，当前未改。
+
 ## 7. 告警与值班
 
 - 规则定义：`deploy/prometheus/rules.yml`（7 条，覆盖 5xx 错误率、P95、实例存活、发件箱积压/死信、声誉对账、JVM 堆水位）。
