@@ -79,9 +79,29 @@ jobs:
 
       - name: PR 仅校验构建，不推送
         if: github.event_name == 'pull_request'
+        env:
+          BACKEND_IMAGE: ${{ steps.meta.outputs.backend }}
+          WEB_IMAGE: ${{ steps.meta.outputs.web }}
         run: |
           echo "::notice title=镜像构建校验通过::PR 只验证 Dockerfile 可构建，不推送到 GHCR"
           docker image ls --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep 'campus-overflow' || true
+
+          # #35：非 root 与运行时 JRE 可以在不连数据库的前提下冒烟验证
+          uid="$(docker run --rm --entrypoint sh "$BACKEND_IMAGE" -c 'id -u')"
+          echo "后端镜像运行用户 uid=$uid"
+          [ "$uid" != "0" ] || { echo "::error::后端镜像仍以 root 运行，不符合 #35"; exit 1; }
+          docker run --rm --entrypoint sh "$BACKEND_IMAGE" -c 'java -version'
+
+          # #36：nginx 反代配置语法校验，不需要后端在线
+          docker run --rm --entrypoint sh "$WEB_IMAGE" -c 'nginx -t'
+
+          # #35 验收要求镜像 <200MB；用真实体积给结论，不估算、也不静默放过
+          size_mb="$(docker image inspect "$BACKEND_IMAGE" --format '{{.Size}}' | awk '{printf "%.0f", $1/1024/1024}')"
+          if [ "$size_mb" -ge 200 ]; then
+            echo "::warning title=#35 镜像体积未达标::后端镜像 ${size_mb}MB ≥ 200MB；当前 eclipse-temurin:21-jre-alpine + fat jar 仍超门槛，需 jlink 定制 JRE 或换 distroless 才能达标，此处如实标注不虚报"
+          else
+            echo "后端镜像 ${size_mb}MB，满足 #35 的 <200MB"
+          fi
 
       - name: 登录 GHCR
         if: github.event_name != 'pull_request'
