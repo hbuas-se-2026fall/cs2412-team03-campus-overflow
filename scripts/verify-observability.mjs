@@ -207,12 +207,17 @@ check('前端 package.json 与 lock 一致（npm ci 不会失败）', () => {
   return `${Object.keys(pkg.dependencies || {}).length} deps / ${Object.keys(pkg.devDependencies || {}).length} devDeps`;
 });
 
-check('Nginx 只暴露精确 health、API 反代指向 backend', () => {
+check('Nginx 只暴露精确 health、其余 actuator 明确拒绝', () => {
   const conf = read('deploy/nginx.conf');
   assert(/location\s*=\s*\/actuator\/health/.test(conf), 'health 端点未做精确匹配');
-  assert(!/location\s+\/actuator\//.test(conf), '把整个 /actuator/ 暴露到公网了');
+  // 其余 /actuator/* 必须显式 404：否则 SPA fallback 会把它们变成 index.html + 200，
+  // 指标虽没真泄露，但边界不清晰；全栈联调曾实测出这个 200。
+  const deny = conf.match(/location\s+\^~\s+\/actuator\/\s*\{([^}]*)\}/);
+  assert(deny && /return\s+404/.test(deny[1]),
+    '缺少 ^~ /actuator/ { return 404 } 兜底，其余 actuator 路径会落到 SPA fallback');
+  assert(!/location\s+\/actuator\/\s*\{[^}]*proxy_pass/.test(conf), '把整个 /actuator/ 代理到公网了');
   assert(/proxy_pass\s+http:\/\/backend:8080/.test(conf), 'API 未反代到 backend:8080');
-  return '精确 health + backend:8080 反代';
+  return '精确 health + ^~ /actuator/ 返回 404 + backend:8080 反代';
 });
 
 check('部署工作流模板具备「无 Secret 可验 / 缺 Secret 跳过」结构', () => {

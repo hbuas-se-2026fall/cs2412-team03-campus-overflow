@@ -99,9 +99,17 @@ jobs:
           echo "$body"
           echo "$body" | grep -q '"status":"UP"'
           echo "=== /actuator/prometheus 不应经 Nginx 暴露 ==="
-          code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost/actuator/prometheus)
+          code=$(curl -sS -o /tmp/prom.out -w '%{http_code}' http://localhost/actuator/prometheus)
           echo "宿主机 80 端口 /actuator/prometheus -> HTTP $code"
-          [ "$code" = "404" ] || echo "::warning::预期 404，实际 $code，请复核 Nginx 暴露边界"
+          # 硬断言，不再只是 warning：SPA fallback 曾让这里返回 200，
+          # 虽未泄露指标但边界不清晰，应在 nginx.conf 用 ^~ /actuator/ return 404 兜住
+          [ "$code" = "404" ] || { echo "::error::actuator 边界被穿透：预期 404，实际 $code"; exit 1; }
+          # 双保险：即便状态码被改写，响应体也不能是 Prometheus 文本指标
+          if grep -qE '^# (HELP|TYPE) |^[a-z_]+_(seconds|total|count)\{' /tmp/prom.out; then
+            echo "::error::响应体含 Prometheus 指标，actuator 已泄露到公网"
+            exit 1
+          fi
+          echo "actuator 边界 OK：404 且未泄露指标 ✅"
           echo "=== /actuator/prometheus 容器内可访问（Prometheus 抓取路径）==="
           curl -fsS http://localhost:8080/actuator/prometheus | head -3
 

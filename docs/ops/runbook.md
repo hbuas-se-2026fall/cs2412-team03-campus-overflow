@@ -209,6 +209,16 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 - `publish-images.yml` 的 PR 冒烟增加 `test -s /app/app.jar`；`scripts/verify-observability.mjs` 增加一条规则，从 `pom.xml` 读 `finalName` 反查 Dockerfile，防止两侧再次漂移。
 - 教训：验证镜像必须包含「按真实 ENTRYPOINT 启动」或至少检查启动产物存在，只跑 `--entrypoint sh` 里的零散命令不足以证明镜像可运行。
 
+### 6.8 `/actuator/prometheus` 从宿主机 80 端口返回 200
+
+全栈联调第一次绿的时候，CI 仍打印了一条 `::warning::预期 404，实际 200，请复核 Nginx 暴露边界`。核查后结论是**指标没有真的泄露**：`location /` 的 `try_files ... /index.html` 把找不到的 `/actuator/prometheus` 回退成了 418 字节的 `index.html`，请求从未到达 backend；容器内 `backend:8080/actuator/prometheus` 才返回真实指标文本，Prometheus 抓取路径正常。
+
+问题在于边界不清晰：一个本应被拒的路径返回 200，容易被误判成「actuator 已暴露」，也不利于安全核查。修复：
+
+- `deploy/nginx.conf` 增加 `location ^~ /actuator/ { return 404; }`。Nginx 中 `=` 精确匹配优先于 `^~` 前缀匹配，所以 `location = /actuator/health` 仍正常放行。
+- `compose-smoke.yml` 把该检查从 `::warning::` 升级为**硬断言**，并追加响应体检测（不得含 `# HELP` / `# TYPE` / `*_seconds{` 等 Prometheus 文本特征），双保险防止将来有人把 actuator 全量代理出去。
+- `verify-observability.mjs` 同步要求该兜底块存在，防止配置回退。
+
 ## 7. 告警与值班
 
 - 规则定义：`deploy/prometheus/rules.yml`（7 条，覆盖 5xx 错误率、P95、实例存活、发件箱积压/死信、声誉对账、JVM 堆水位）。
