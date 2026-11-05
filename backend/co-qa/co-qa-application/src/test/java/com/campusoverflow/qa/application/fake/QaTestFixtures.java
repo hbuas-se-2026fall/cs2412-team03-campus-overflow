@@ -8,6 +8,8 @@ import com.campusoverflow.qa.application.port.QuestionListCache;
 import com.campusoverflow.qa.application.query.QuestionSummaryView;
 import com.campusoverflow.qa.domain.Answer;
 import com.campusoverflow.qa.domain.AnswerRepository;
+import com.campusoverflow.qa.domain.Comment;
+import com.campusoverflow.qa.domain.CommentRepository;
 import com.campusoverflow.qa.domain.Question;
 import com.campusoverflow.qa.domain.QuestionRepository;
 import com.campusoverflow.qa.domain.TagRepository;
@@ -96,6 +98,7 @@ public final class QaTestFixtures {
     }
 
     public static class InMemoryVotes implements VoteRepository {
+
         private final Map<String, Vote> store = new LinkedHashMap<>();
         private final AtomicLong sequence = new AtomicLong();
 
@@ -123,8 +126,28 @@ public final class QaTestFixtures {
         }
     }
 
+    public static class InMemoryComments implements CommentRepository {
+        private final Map<Long, Comment> store = new LinkedHashMap<>();
+        private final AtomicLong sequence = new AtomicLong();
+
+        @Override
+        public Optional<Comment> findById(long id) {
+            return Optional.ofNullable(store.get(id));
+        }
+
+        @Override
+        public Comment save(Comment comment) {
+            if (comment.id() == null) {
+                comment.assignId(sequence.incrementAndGet());
+            }
+            store.put(comment.id(), comment);
+            return comment;
+        }
+    }
+
     /** 记录所有已发布事件，便于断言“领域动作 → 集成事件”的契约。 */
     public static class RecordingEvents implements IntegrationEventPublisher {
+
         public final List<IntegrationEvent> published = new ArrayList<>();
 
         @Override

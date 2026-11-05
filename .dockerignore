@@ -1,0 +1,42 @@
+# Issue #35 / #36 输出物。
+# 两个 Dockerfile 的 build context 都是仓库根（docker-compose.yml 里 context: ..），
+# 因此 .dockerignore 必须放在**仓库根**，放 backend/ 或 frontend/ 不会被 Docker 读取。
+# 目的：缩小上下文（不传 .git / target / node_modules），并阻止密钥文件进入镜像层。
+
+# ---- VCS / 编辑器 / CI ----
+.git
+.gitignore
+.github
+.idea
+.vscode
+*.iml
+
+# ---- 文档与课程交付物（镜像不需要）----
+docs
+*.md
+!README.md
+
+# ---- 构建产物（由镜像内重新构建）----
+**/target
+**/build
+**/dist
+**/node_modules
+**/.vite
+**/coverage
+
+# ---- 密钥 / 本地配置：绝不能进镜像 ----
+.env
+.env.*
+deploy/.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+!.env.example
+
+# ---- 日志 / 临时文件 ----
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
