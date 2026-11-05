@@ -290,3 +290,53 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 > 2. 手动 `workflow_dispatch` 指定 `image_tag` 补发时，自动部署侧按 `head_sha` 取 tag，两者不一致会让 `docker pull` 直接变红（设计如此，不静默回退）。补发请用 deploy 自己的 `workflow_dispatch`。
 > 3. 本机仍没有 Docker；但 **GitHub Actions 的 ubuntu runner 自带 Docker**，`compose-smoke.yml` 已在 `verify/full-stack` 集成分支真跑过全栈 `docker compose up`（详见 6.7 与 CI 日志）。这不等于有长期在线的生产主机，`deploy.yml` 的 SSH 真机部署路径仍未实跑。
 > 4. #35 的「镜像 <200MB」此前未达标：早期实测 209MB，**develop 合入 #72/#73/#76 后复测为 275MB**（`docker image inspect` 换算；`docker image ls` 十进制 288MB），其中 fat jar 76MB、完整 JRE 约 200MB。CI 用 `::warning::` 主动标注，不伪装达标。jlink 定制 JRE 的修复见第 10 节。
+
+---
+
+## 10. jlink 定制 JRE（Issue #35，镜像体积）
+
+### 10.1 为什么必须换
+
+原运行时 `eclipse-temurin:21-jre-alpine` 带完整 JRE（约 200MiB），加 75.4MiB 的 Spring Boot fat jar，实测 275MiB，远超 #35 的 `<200MB`。删几层缓存没用，只有换掉 JRE 本体。
+
+### 10.2 三阶段结构
+
+| 阶段 | 镜像 | 作用 |
+| --- | --- | --- |
+| `build` | `maven:3.9-eclipse-temurin-21` | 编译 fat jar，`finalName` 硬校验后 cp 到 `/app.jar` |
+| `jre-build` | `eclipse-temurin:21-jdk-alpine` | `jdeps` 分析 + `jlink` 生成 `/minijre` |
+| 运行时 | `alpine:3.20` | 只放 `/opt/jre` + `/app/app.jar`，非 root |
+
+### 10.3 两个不能踩的坑
+
+**musl 同源**：jlink 阶段与运行时必须都是 musl。若从 glibc 的 JDK 生成 JRE 再放进 alpine，`java` 会因缺 glibc 动态库启动即崩。镜像 build 会成功、`java -version` 冒烟也可能过，直到 `docker compose up` 才暴露 —— 与 6.6 的 jar 名假绿是同一类问题。
+
+**反射兜底**：`jdeps --print-module-deps` 只看静态字节码，看不到 Spring / Hibernate / JDBC / TLS 通过 `Class.forName`、ServiceLoader 加载的类。本机对 131 个依赖 jar 只分析出 14 个模块，必须显式补齐 25 个（`java.sql` / `java.naming` / `java.management` / `java.logging` / `jdk.crypto.ec` / `jdk.unsupported` 等），缺一个就是运行时 `NoClassDefFoundError`。清单在 Dockerfile 的 `EXTRA`，并做去重与 `MODS` 为空时的边界处理。
+
+### 10.4 门禁同步收紧
+
+- `.github/workflows/publish-images.yml`：体积检查从 `::warning::` 升级为**硬断言**，≥200MB 直接 `exit 1`。达标之后不留「超了也只警告」的口子。
+- `scripts/verify-observability.mjs`：原规则「运行时镜像名含 jre」在 jlink 后不成立，改为更强的约束 —— 运行时不得是 JDK/Maven 镜像、必须有 `jlink --add-modules`、必须 COPY `/minijre`、必须有 `test -x /minijre/bin/java`、反射兜底模块缺一即失败。
+
+### 10.5 验证方式（本机无 Docker）
+
+`verify/**` 分支推送会触发 `compose-smoke.yml`，在 runner 上真实 `docker compose up -d --build`，逐项验 readiness、SPA fallback、`/api` 反代、actuator 边界、Prometheus 抓取与 Grafana datasource；PR 上的 `publish-images` 冒烟负责实测体积、非 root、`java -version`、jar 存在性。
+
+**只信 runner 结论**。`docker build` 成功不等于应用能启动，静态校验 18 项通过也不等于运行时模块齐备。
+
+### 10.6 实测结果（2026-11-05，GitHub Actions runner）
+
+| 项目 | 修复前 | 修复后 |
+| --- | ---: | ---: |
+| 后端镜像（`docker image inspect`，MiB） | **275MB** | **150MB** ✅ |
+| 后端镜像（`docker image ls`，十进制） | 288MB | 157MB |
+| 运行时 JRE | 完整 `21-jre-alpine` 约 200MB | jlink 定制 27 模块约 52MB |
+| fat jar | 75.4MiB | 75.4MiB（不变） |
+
+证据：
+- `publish-images` run **`42027743402`** — `构建后端镜像` SUCCESS、`PR 仅校验构建，不推送` SUCCESS，日志明确输出 `后端镜像实测 150MB（门槛 <200MB）` / `✅ 满足 #35 的 <200MB`；非 root `uid=100`、`java -version`、`/app/app.jar` 存在性校验均通过；jlink 阶段输出 `27` 个模块。
+- `compose-smoke` run **`42027654857`** — `docker compose up -d --build` 后 **readiness / 首页 / SPA fallback / 健康检查与 actuator 边界 / `/api` 反代 / Prometheus 抓取 / Grafana datasource 全部 SUCCESS**。这是关键：证明定制 JRE 不是「能 build 但起不来」，Spring Boot 真实启动了，反射兜底模块清单够用。
+
+`jdeps` 静态只分析出 14 个模块（缺 `java.sql` / `java.logging` / `java.naming` / `java.management` / `jdk.crypto.ec`），兜底清单补到 27 个后启动正常，验证了 10.3 的判断。
+
+> 口径说明：#35 写的是「<200MB」，CI 用 `docker image inspect .Size / 1024 / 1024` 的 MiB 口径判断（150MB）。即使按更宽松的 `docker image ls` 十进制 157MB，同样达标，不存在挑口径抬数字。
