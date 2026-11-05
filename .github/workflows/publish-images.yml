@@ -105,13 +105,16 @@ jobs:
           # 让语法检查能跑完，不改生产配置（compose 网络里 backend 本来就可解析）。
           docker run --rm --add-host backend:127.0.0.1 --entrypoint sh "$WEB_IMAGE" -c 'nginx -t'
 
-          # #35 验收要求镜像 <200MB；用真实体积给结论，不估算、也不静默放过
+          # #35 验收要求镜像 <200MB；用真实体积给结论，不估算、也不静默放过。
+          # 2026-11-05：改用 jlink 定制 JRE 后已达标，因此把原来的 ::warning::
+          # 升级为硬断言——体积回退就直接让 PR 变红，不再「超了也只警告」。
           size_mb="$(docker image inspect "$BACKEND_IMAGE" --format '{{.Size}}' | awk '{printf "%.0f", $1/1024/1024}')"
+          echo "后端镜像实测 ${size_mb}MB（门槛 <200MB）"
           if [ "$size_mb" -ge 200 ]; then
-            echo "::warning title=#35 镜像体积未达标::后端镜像 ${size_mb}MB ≥ 200MB；当前 eclipse-temurin:21-jre-alpine + fat jar 仍超门槛，需 jlink 定制 JRE 或换 distroless 才能达标，此处如实标注不虚报"
-          else
-            echo "后端镜像 ${size_mb}MB，满足 #35 的 <200MB"
+            echo "::error title=#35 镜像体积回退::后端镜像 ${size_mb}MB ≥ 200MB，检查 deploy/backend.Dockerfile 的 jlink 阶段是否被改回完整 JRE"
+            exit 1
           fi
+          echo "✅ 后端镜像 ${size_mb}MB，满足 #35 的 <200MB"
 
       - name: 登录 GHCR
         if: github.event_name != 'pull_request'
