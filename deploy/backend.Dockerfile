@@ -40,9 +40,10 @@ RUN jar xf /app.jar BOOT-INF/lib BOOT-INF/classes \
                 --class-path "$(find BOOT-INF/lib -name '*.jar' | paste -sd: -):BOOT-INF/classes" \
                 BOOT-INF/classes 2>/dev/null || true)" \
     && EXTRA="java.base,java.logging,java.sql,java.sql.rowset,java.naming,java.management,java.instrument,java.xml,java.xml.crypto,java.desktop,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.transaction.xa,java.compiler,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.unsupported,jdk.management,jdk.jfr,jdk.net,jdk.zipfs,jdk.security.auth" \
-    && echo "jdeps 静态模块: ${MODS:-（空）}" \
+    && ALL="$(printf '%s' "${MODS:+${MODS},}${EXTRA}" | tr ',' '\n' | sort -u | paste -sd, -)" \
+    && echo "jdeps 静态模块: ${MODS:-（空，由兜底清单覆盖）}" \
     && echo "反射兜底模块: ${EXTRA}" \
-    && jlink --add-modules "${MODS},${EXTRA}" \
+    && jlink --add-modules "${ALL}" \
              --strip-debug --no-man-pages --no-header-files --compress zip-6 \
              --output /minijre \
     && test -x /minijre/bin/java \

@@ -289,4 +289,4 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 > 1. `workflow_run` 只在**默认分支**上的工作流定义生效。本 workflow 目前仍只存在于 PR 分支与 `verify/**`，所以在 #73 合并进 `develop` 之前，「push develop 自动部署」只是代码就绪、没有生产 run 证据；合并后由 SM 配好 Secrets 才能真正上线。
 > 2. 手动 `workflow_dispatch` 指定 `image_tag` 补发时，自动部署侧按 `head_sha` 取 tag，两者不一致会让 `docker pull` 直接变红（设计如此，不静默回退）。补发请用 deploy 自己的 `workflow_dispatch`。
 > 3. 本机仍没有 Docker；但 **GitHub Actions 的 ubuntu runner 自带 Docker**，`compose-smoke.yml` 已在 `verify/full-stack` 集成分支真跑过全栈 `docker compose up`（详见 6.7 与 CI 日志）。这不等于有长期在线的生产主机，`deploy.yml` 的 SSH 真机部署路径仍未实跑。
-> 4. #35 的「镜像 <200MB」实测 209MB 未达标，CI 用 `::warning::` 主动标注，不伪装达标。
+> 4. #35 的「镜像 <200MB」此前未达标：早期实测 209MB，**develop 合入 #72/#73/#76 后复测为 275MB**（`docker image inspect` 换算；`docker image ls` 十进制 288MB），其中 fat jar 76MB、完整 JRE 约 200MB。CI 用 `::warning::` 主动标注，不伪装达标。jlink 定制 JRE 的修复见第 10 节。
