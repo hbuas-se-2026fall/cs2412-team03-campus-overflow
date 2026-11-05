@@ -1,0 +1,75 @@
+### CampusOverflow 认证链路冒烟脚本（Closes #3）
+# 工具：VS Code 装 "REST Client" 扩展，或 IntelliJ IDEA 自带 HTTP Client。
+# 前置：后端用 dev + demo profile 起在本机（MySQL 3306 / Redis 6379）。
+# 账号来自 DemoDataSeeder，统一密码 Campus2026：
+#   admin01(管理员) / T2001(教师) / TA3001(助教) / 2023001~2023003(学生)
+# 按顺序从上往下逐个 Send Request，cookie jar 在同文件内自动共享。
+
+@baseUrl = http://localhost:8080
+@student = 2023001
+@pwd = Campus2026
+
+### 1. 健康检查：期望 200，body {"status":"UP"}
+GET {{baseUrl}}/actuator/health
+
+### 2. 取 CSRF Token：期望 200，返回 {"headerName":"X-XSRF-TOKEN","token":"..."}
+# 同时服务端种下 XSRF-TOKEN cookie，后续 POST 必须在请求头带回。
+# @name csrf
+GET {{baseUrl}}/api/v1/auth/csrf
+
+> {%
+    client.global.set("xsrfToken", response.body.token);
+%}
+
+### 3. 未登录访问 /me：期望 401，code=AUTH-401（必须在登录请求之前跑）
+GET {{baseUrl}}/api/v1/auth/me
+
+### 4. 正确密码登录：期望 200，返回 MeView（username/displayName/role）
+# 成功后 SESSION cookie 自动写入 jar，后续请求免登录。
+# @name login
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "username": "{{student}}",
+  "password": "{{pwd}}"
+}
+
+### 5. 错误密码登录：期望 401，detail=账号或密码错误（不应泄露具体哪个字段错）
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "username": "{{student}}",
+  "password": "wrong-password-000"
+}
+
+### 6. 登录后查当前用户：期望 200，username={{student}}
+GET {{baseUrl}}/api/v1/auth/me
+
+### 7. 登出：期望 204 No Content
+POST {{baseUrl}}/api/v1/auth/logout
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+### 8. 登出后再查 /me：期望 401（SESSION 已失效）
+GET {{baseUrl}}/api/v1/auth/me
+
+### 附. 注册新学生（可选，会写库；验收时按需手动跑，跑完建议删掉该账号）
+# POST {{baseUrl}}/api/v1/auth/register
+# Content-Type: application/json
+# X-XSRF-TOKEN: {{xsrfToken}}
+# Cookie: XSRF-TOKEN={{xsrfToken}}
+#
+# {
+#   "username": "2099001",
+#   "displayName": "冒烟测试生",
+#   "email": "smoke@campus.edu.cn",
+#   "password": "Campus2026",
+#   "college": "计算机工程学院",
+#   "className": "计科2999"
+# }
