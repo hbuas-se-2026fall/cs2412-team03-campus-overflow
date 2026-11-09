@@ -166,7 +166,7 @@ jobs:
           if [ -z "$TOKEN" ]; then
             curl -s -c /tmp/sonar.cookie -o /tmp/sonar_login.json -w "login HTTP %{http_code}\n" \
               -X POST "http://localhost:9000/api/authentication/login" -d "login=admin&password=admin"
-            code=$(post -b /tmp/sonar.cookie -X POST "http://localhost:9000/api/user_tokens/generate" -d "name=ci-${GITHUB_RUN_ID}")
+            code=$(post -u "${SONAR_TMP_TOKEN}:" -X POST "http://localhost:9000/api/user_tokens/generate" -d "name=ci-${GITHUB_RUN_ID}")
             TOKEN=$(read_token)
             echo "cookie /api/user_tokens/generate -> HTTP $code, token_len=${#TOKEN}"
           fi
@@ -184,25 +184,25 @@ jobs:
       - name: 配置质量门禁
         run: |
           GATE="team3-gate"
-          curl -sf -b /tmp/sonar.cookie -X POST \
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
             "http://localhost:9000/api/qualitygates/create" -d "name=$GATE" > /dev/null
           # 新代码覆盖率 >= 60%（低于 60% 报错）
-          curl -sf -b /tmp/sonar.cookie -X POST \
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
             "http://localhost:9000/api/qualitygates/create_condition" \
             -d "gateName=$GATE&metric=new_coverage&op=LT&error=60" > /dev/null || true
           # Bugs = 0（新代码 bug > 0 报错）
-          curl -sf -b /tmp/sonar.cookie -X POST \
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
             "http://localhost:9000/api/qualitygates/create_condition" \
             -d "gateName=$GATE&metric=new_bugs&op=GT&error=0" > /dev/null || true
           # Vulnerabilities = 0
-          curl -sf -b /tmp/sonar.cookie -X POST \
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
             "http://localhost:9000/api/qualitygates/create_condition" \
             -d "gateName=$GATE&metric=new_vulnerabilities&op=GT&error=0" > /dev/null || true
           # Code Smells < 10
-          curl -sf -b /tmp/sonar.cookie -X POST \
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
             "http://localhost:9000/api/qualitygates/create_condition" \
             -d "gateName=$GATE&metric=new_code_smells&op=GT&error=10" > /dev/null || true
-          curl -sf -b /tmp/sonar.cookie -X POST \
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
             "http://localhost:9000/api/qualitygates/set_as_default" -d "name=$GATE" > /dev/null
           echo "quality gate $GATE configured"
 
