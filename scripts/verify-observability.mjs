@@ -172,12 +172,23 @@ check('前端 Dockerfile 使用 lock 文件与 npm ci（构建可复现）', () 
   return 'lock + npm ci + 多阶段';
 });
 
-check('后端 Dockerfile 多阶段 / 非 root / 运行时仅 JRE', () => {
+check('后端 Dockerfile 多阶段 / 非 root / 运行时不带完整 JDK', () => {
   const df = read('deploy/backend.Dockerfile');
   assert((df.match(/^FROM /gm) || []).length >= 2, '不是多阶段构建');
   assert(/^USER\s+(?!root\b)\S+/m.test(df), '运行时以 root 启动');
   const stages = (df.match(/^FROM\s+\S+/gm) || []).map((s) => s.split(/\s+/)[1]);
-  assert(stages.some((s) => /jre|runtime/i.test(s)), '运行时镜像不是 JRE');
+  const runtime = stages[stages.length - 1];
+  // 原规则要求「运行时镜像名含 jre」，jlink 定制 JRE 后运行时是纯 alpine，
+  // 名字里不再有 jre。改为更强的约束：运行时不得是 JDK / Maven 镜像，
+  // 且必须真的由 jlink 生成 JRE 并 COPY 进来（不是把完整 JDK 打进产物）。
+  assert(!/jdk|maven/i.test(runtime), `运行时镜像 ${runtime} 含完整 JDK/Maven，体积下不来`);
+  assert(df.includes('jlink --add-modules'), '没有用 jlink 生成定制 JRE，#35 的 <200MB 无法达标');
+  assert(/COPY --from=jre-build \/minijre/.test(df), '定制 JRE 未 COPY 进运行时镜像');
+  assert(/test -x\s+\/minijre\/bin\/java/.test(df), '缺少构建期 JRE 可执行性硬校验');
+  // 反射兜底：jdeps 看不到 JDBC / JMX / TLS / 字符集，缺一即运行时 NoClassDefFoundError
+  for (const m of ['java.sql', 'java.naming', 'java.management', 'jdk.crypto.ec', 'java.logging']) {
+    assert(df.includes(m), `jlink 模块清单缺少反射兜底模块 ${m}`);
+  }
   return stages.join(' -> ');
 });
 
