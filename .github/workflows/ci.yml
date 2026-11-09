@@ -148,19 +148,32 @@ jobs:
           echo "::error::SonarQube did not become ready in 5 minutes"
           exit 1
 
-      # 临时容器默认 admin/admin，先登录拿 cookie，再生成 CI 专用 token。
-      # 不依赖 repo secret：每次运行都是全新容器，外部 token 在这里 401。
+      # 临时容器默认 admin/admin。PO 复核给的方案：直接 basic auth 生成 token，
+      # 不依赖 secret、也不依赖 session cookie（10.x 的 login 接口在本场景返回不可用）。
+      # 失败时打印 HTTP 状态码与响应体，避免像上一版那样静默空白导致 JSONDecodeError。
       - name: 生成临时扫描 token
         run: |
-          curl -sf -c /tmp/sonar.cookie -X POST \
-            "http://localhost:9000/api/authentication/login" \
-            -u admin:admin \
-            -d "login=admin&password=admin" > /dev/null
-          TOKEN=$(curl -sf -b /tmp/sonar.cookie -X POST \
-            "http://localhost:9000/api/user_tokens/generate" \
-            -d "name=ci-${GITHUB_RUN_ID}" \
-            | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
-          if [ -z "$TOKEN" ]; then echo "::error::token 生成失败"; exit 1; fi
+          set +e
+          post() {
+            curl -s -o /tmp/sonar_api.json -w "%{http_code}" "$@"
+          }
+          read_token() {
+            python3 -c "import json;print(json.load(open('/tmp/sonar_api.json')).get('token',''))" 2>/dev/null || true
+          }
+          code=$(post -u admin:admin -X POST "http://localhost:9000/api/user_tokens/generate" -d "name=ci-${GITHUB_RUN_ID}")
+          TOKEN=$(read_token)
+          echo "basic-auth /api/user_tokens/generate -> HTTP $code, token_len=${#TOKEN}"
+          if [ -z "$TOKEN" ]; then
+            curl -s -c /tmp/sonar.cookie -o /tmp/sonar_login.json -w "login HTTP %{http_code}\n" \
+              -X POST "http://localhost:9000/api/authentication/login" -d "login=admin&password=admin"
+            code=$(post -b /tmp/sonar.cookie -X POST "http://localhost:9000/api/user_tokens/generate" -d "name=ci-${GITHUB_RUN_ID}")
+            TOKEN=$(read_token)
+            echo "cookie /api/user_tokens/generate -> HTTP $code, token_len=${#TOKEN}"
+          fi
+          if [ -z "$TOKEN" ]; then
+            echo "::error::生成 Sonar token 失败，最后响应：$(head -c 400 /tmp/sonar_api.json)"
+            exit 1
+          fi
           echo "SONAR_TMP_TOKEN=$TOKEN" >> $GITHUB_ENV
 
       # 建自定义质量门并设为默认。指标：
@@ -213,4 +226,4 @@ jobs:
           path: |
             backend/**/target/jacoco.xml
             backend/**/target/site/jacoco/
-          if-no-found: ignore
+          if-no-files-found: ignore
