@@ -211,7 +211,7 @@ jobs:
 
       - name: Sonar 扫描并等待质量门禁
         run: |
-          mvn -B -f backend/pom.xml sonar:sonar \
+          mvn -B -f backend/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:4.0.0.4121:sonar \
             -Dsonar.projectKey=campus-overflow \
             -Dsonar.host.url=http://localhost:9000 \
             -Dsonar.token=${{ env.SONAR_TMP_TOKEN }} \
