@@ -224,6 +224,6 @@ jobs:
         with:
           name: sonar-report
           path: |
-            backend/**/target/jacoco.xml
+            backend/**/target/site/jacoco/jacoco.xml
             backend/**/target/site/jacoco/
           if-no-files-found: ignore
