@@ -11,19 +11,29 @@
 # 但真正启动时才报 `Error: Unable to access jarfile app.jar`。
 # 现在构建阶段显式 cp 到固定路径并 test -f 硬校验：finalName 再变化会在
 # 构建期直接失败，而不是静默产出跑不起来的镜像。见 Issue #35。
-FROM maven:3.9-eclipse-temurin-21 AS build
-WORKDIR /src
-COPY backend/pom.xml ./pom.xml
-COPY backend/ ./
-RUN mvn -B -DskipTests clean package \
-    && test -f co-bootstrap/target/campus-overflow.jar \
-    && cp co-bootstrap/target/campus-overflow.jar /app.jar
-
-FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S app -G app && apk add --no-cache wget
+# 阶段 1：Builder
+FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
-COPY --from=build /app.jar app.jar
-USER app
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=70 -Duser.timezone=UTC"
+
+# 把配置了阿里云镜像的 settings.xml 拷贝到 Maven 的配置目录
+COPY deploy/settings.xml /usr/share/maven/ref/settings.xml
+
+# 直接拷贝整个 backend 目录（注意 .dockerignore 已经排除了 target 等垃圾文件）
+COPY backend/ .
+
+# 编译打包并跳过测试
+RUN mvn clean package -DskipTests
+
+# 阶段 2：Runtime
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+# 非 root 运行
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
+
+# 从 builder 阶段拷贝打好的 jar 包
+COPY --from=builder /app/co-bootstrap/target/*.jar app.jar
+
 EXPOSE 8080
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

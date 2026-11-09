@@ -78,6 +78,11 @@ jobs:
       - name: 安装依赖
         working-directory: frontend
         run: npm install --no-audit --no-fund
+      # #42：配了 ESLint 就必须有门禁。此前只跑 typecheck + build，
+      # lint 脚本 / .eslintrc.cjs 从未被 CI 执行，等于不设防。
+      - name: 代码规范检查（ESLint）
+        working-directory: frontend
+        run: npm run lint
       - name: 类型检查
         working-directory: frontend
         run: npm run typecheck

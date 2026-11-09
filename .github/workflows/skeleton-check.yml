@@ -1,12 +1,15 @@
 # 骨架绿灯流水线：只验证"结构没坏"，不跑 TODO 测试
-# 与 ci.yml 的分工：ci.yml 是全量目标（现在红是预期），本流水线是日常门禁（必须绿）
+# 与 ci.yml 的分工：ci.yml 是全量验证（#72 合并后已全绿），本流水线是日常门禁（必须绿）
+# 两条流水线的前端 job 都必须真跑 ESLint，详见 #42。
 name: skeleton-check
 
 on:
   # 不限制 base 分支：所有 PR 都触发，避免 stacked PR 等不到检查而锁死合并
   pull_request:
   push:
-    branches: [main]
+    # develop 是集成分支，直接推送也要过这套日常门禁；此前只挂 main，
+    # 等于 develop 上只有 ci.yml 兜底，本流水线的骨架/前端检查会被绕过。
+    branches: [main, develop]
 
 jobs:
   backend-skeleton:
@@ -42,6 +45,11 @@ jobs:
       - name: 安装依赖
         working-directory: frontend
         run: npm install --no-audit --no-fund
+      # #42：与 ci.yml 的「前端构建」保持同样的门禁强度，
+      # PR 上两条都必须真跑 ESLint，不允许只 typecheck + build 就放行。
+      - name: 代码规范检查（ESLint）
+        working-directory: frontend
+        run: npm run lint
       - name: 类型检查
         working-directory: frontend
         run: npm run typecheck
