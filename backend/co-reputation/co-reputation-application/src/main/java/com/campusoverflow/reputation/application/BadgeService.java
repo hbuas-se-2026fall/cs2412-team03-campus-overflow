@@ -7,6 +7,7 @@ import com.campusoverflow.reputation.domain.BadgeType;
 import com.campusoverflow.shared.event.EventIds;
 import com.campusoverflow.shared.event.IntegrationEventPublisher;
 import java.time.Clock;
+import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +26,23 @@ public class BadgeService {
         this.clock = clock;
     }
 
+    /**
+     * 授予徽章。上游事件是<b>至少一次</b>投递的，所以这里用“已拥有即忽略”实现幂等：
+     * 重复调用不会再写一行徽章，也不会重复发事件。
+     *
+     * @param userId 获得者
+     * @param type   徽章类型
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void grant(long userId, BadgeType type) {
-        // TODO(S3)：实现 BadgeService.grant——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：BadgeService.grant 尚未实现");
+        if (type == null) {
+            throw new IllegalArgumentException("徽章类型不能为空");
+        }
+        if (badges.has(userId, type)) {
+            return;
+        }
+        Instant now = clock.instant();
+        badges.award(new BadgeAward(userId, type, now));
+        events.publish(new BadgeAwardedEvent(EventIds.next(), now, userId, type.name(), type.displayName()));
     }
 }
