@@ -79,13 +79,13 @@ type 用：feat / fix / docs / test / refactor / chore；scope 为模块或上�
 
 ## 五、角色分工
 
-| 角色 | 姓名 | 学号 | GitHub | 职责 |
-|---|---|---|---|---|
-| PO | 孔志敏 | 2024117152 | KZM-7748 | 需求优先级、Backlog、验收标准、拍板 |
-| SM | 刘浩然 | 2024116151 | 230593641 | 站会主持、流程保障、合并 PR、风险跟踪 |
-| SM | 肖蕴晨 | 2024121222 | LIfe-evoe | 看板维护、issue 拆解、CI 配置、环境保障 |
-| DV | 黄振亚 | 2024109324 | deadlie | Discovery 上下文 + 测试验证 / CI 门禁（ArchUnit、skeleton-check） |
-| DV | 易子恒 | 2024117154 | moOvO760 | Q&A + Reputation 上下文，DevOps |
+| 角色 | 姓名 | GitHub | 职责 |
+|---|---|---|---|
+| PO | 孔志敏 | KZM-7748 | 需求优先级、Backlog、验收标准、拍板 |
+| SM | 刘浩然 | 230593641 | 站会主持、流程保障、合并 PR、风险跟踪 |
+| SM | 肖蕴晨 | LIfe-evoe | 看板维护、issue 拆解、CI 配置、环境保障 |
+| DV | 黄振亚 | deadlie | Discovery 上下文 + 测试验证 / CI 门禁（ArchUnit、skeleton-check） |
+| DV | 易子恒 | moOvO760 | Q&A + Reputation 上下文，DevOps |
 
 > 备份：每个角色有 backup，主负责人不在时由 backup 顶上。
 

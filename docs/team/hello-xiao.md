@@ -1,6 +1,5 @@
 # 肖蕴晨
 
-- 学号：2024121222
 - 班级：计科2412
 - 角色：SM（Scrum Master）
 - GitHub：[LIfe-evoe](https://github.com/LIfe-evoe)
