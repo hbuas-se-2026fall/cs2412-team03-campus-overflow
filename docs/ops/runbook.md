@@ -291,6 +291,36 @@ docker logs co-prometheus 2>&1 | grep -i 'rules\|error'
 > 3. 本机仍没有 Docker；但 **GitHub Actions 的 ubuntu runner 自带 Docker**，`compose-smoke.yml` 已在 `verify/full-stack` 集成分支真跑过全栈 `docker compose up`（详见 6.7 与 CI 日志）。这不等于有长期在线的生产主机，`deploy.yml` 的 SSH 真机部署路径仍未实跑。
 > 4. #35 的「镜像 <200MB」此前未达标：早期实测 209MB，**develop 合入 #72/#73/#76 后复测为 275MB**（`docker image inspect` 换算；`docker image ls` 十进制 288MB），其中 fat jar 76MB、完整 JRE 约 200MB。CI 用 `::warning::` 主动标注，不伪装达标。jlink 定制 JRE 的修复见第 10 节。
 
+
+### GHCR 包可见性实测（2026-11-10）
+
+Issue #86 里「GHCR 拉取侧没验」这条已实测完成，结论：**两个包当前都是私有**，目标机裸 `docker pull` 必然 401。
+
+| 检查 | 方法 | 结果 |
+| --- | --- | --- |
+| 后端包 | 匿名请求 `https://ghcr.io/token?service=ghcr.io&scope=repository:hbuas-se-2026fall/cs2412-team03-campus-overflow-backend:pull` | **401 UNAUTHORIZED**（`authentication required`），拿不到 token |
+| 前端包 | 同上，镜像名 `-web` | **401 UNAUTHORIZED** |
+| 对照组（公开包） | 同样方法请求 `stefanprodan/podinfo` | **200** 且能匿名读 `manifests/latest`（200） |
+
+对照组是关键：同样的探测方式对公开包能拿到 token 与 manifest，说明 401 反映的是包可见性，而不是探测方法本身有问题。
+
+推送侧（即「推得上去」）是好的：`Publish Images (Lab8)` run #39（`develop` @ `ec6a7b3`）`Login Succeeded`，两个镜像均 `Pushed`，
+tag 为完整 commit SHA，digest 分别为 `sha256:1db58c9…`（后端）、`sha256:c79487b…`（前端）。
+
+目标主机侧二选一，命令如下：
+
+```bash
+# 方案 A（推荐）：保持私有，主机预置 read:packages 的 PAT
+echo "$GHCR_PAT" | docker login ghcr.io -u <github-username> --password-stdin
+docker pull ghcr.io/hbuas-se-2026fall/cs2412-team03-campus-overflow-backend:<sha>
+
+# 方案 B：把包改为 public（org → Packages → 选中包 → Change visibility）
+# 改完后主机无需保存任何凭据即可 docker pull
+```
+
+推荐方案 A：答辩演示时私有可控、凭据泄露面最小（PAT 只给 `read:packages`）；方案 B 更省事，但等于把镜像公开。
+无论哪种，都与上文「CI 不替目标机代填凭据」的约定一致——这是主机侧一次性准备，不进 CI。
+
 ---
 
 ## 10. jlink 定制 JRE（Issue #35，镜像体积）
