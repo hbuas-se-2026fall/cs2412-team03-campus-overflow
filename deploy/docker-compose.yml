@@ -99,7 +99,26 @@ services:
       - "./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro"
       - "./grafana/dashboards:/var/lib/grafana/dashboards:ro"
 
+  # SonarQube 代码质量门禁（Issue #32）。首次启动约 30-60 秒，web 端口 9000。
+  # 初始账号 admin/admin，登录后强制改密；生成 token 后配到 CI 的 SONAR_TOKEN secret。
+  # 自带内置 ES 数据库，7.9+ 不再支持外部数据库外置要求；内存至少 2GB（runner 上用 -xmx 限制）。
+  sonarqube:
+    image: sonarqube:10.7.0-community
+    container_name: co-sonarqube
+    profiles: ["observability"]
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+      SONAR_WEB_JAVAOPTS: "-Xmx1024m -Xms256m"
+    ports: ["9000:9000"]
+    volumes: ["sonarqube-data:/opt/sonarqube/data"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/api/system/status"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
 volumes:
   mysql-data:
   redis-data:
   grafana-data:
+  sonarqube-data:
