@@ -1,0 +1,136 @@
+### CampusOverflow 冒烟脚本 · 认证 / 课程 / 问答 / 投票
+### 用法：IDEA 内置 HTTP Client，或 VS Code 的 REST Client 扩展。
+### 从上往下依次执行，每一步的响应里能拿到下一步要用的值。
+###
+### 注意：服务端用会话 + CSRF Token（ADR-003），不是 JWT。
+### 除 GET 外的请求都要带 `X-XSRF-TOKEN` 请求头，值取自 `GET /auth/csrf`。
+
+@host = http://localhost:8080
+@api = {{host}}/api/v1
+@courseId = 1
+@questionId = 1
+@answerId = 1
+
+
+### ========== 0. 拿 CSRF Token ==========
+# 响应体里的 token 和 Set-Cookie 里的 XSRF-TOKEN 是同一个值，二选一都行。
+# @name csrf
+GET {{api}}/auth/csrf
+
+
+### ========== 1. 注册学生 ==========
+# username 是学号，4-20 位；password 8-64 位。
+# 注册成功返回 201 和 {"id": ...}。
+POST {{api}}/auth/register
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrf.response.body.token}}
+
+{
+  "username": "2024123401",
+  "displayName": "冒烟测试",
+  "email": "smoke@campus.local",
+  "password": "SmokeTest#2026",
+  "college": "计算机学院",
+  "className": "计科2412"
+}
+
+
+### ========== 2. 登录 ==========
+# 登录成功后服务端换会话 ID（防会话固定），返回当前用户信息。
+# 这一步之后，REST Client 会自动带上会话 Cookie。
+# @name login
+POST {{api}}/auth/login
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrf.response.body.token}}
+
+{
+  "username": "2024123401",
+  "password": "SmokeTest#2026"
+}
+
+
+### ========== 3. 当前登录用户 ==========
+GET {{api}}/auth/me
+
+
+### ========== 4. 课程列表 ==========
+GET {{api}}/courses
+
+
+### ========== 5. 加入课程 ==========
+# 有的课程需要审批，返回里会体现状态。
+POST {{api}}/courses/{{courseId}}/join
+X-XSRF-TOKEN: {{csrf.response.body.token}}
+
+
+### ========== 6. 我的课程 ==========
+GET {{api}}/courses/mine
+
+
+### ========== 7. 提问 ==========
+# title 最长 150，body 最长 30000，tags 1-5 个。
+# @name postQuestion
+POST {{api}}/questions
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrf.response.body.token}}
+
+{
+  "courseId": {{courseId}},
+  "title": "冒烟测试：跳表的查找为什么是 O(log n)",
+  "body": "如题，想确认一下这个结论的推导过程。",
+  "tags": ["数据结构", "算法"]
+}
+
+
+### ========== 8. 问题列表（可按课程过滤）==========
+GET {{api}}/questions?courseId={{courseId}}&page=1&size=20
+
+
+### ========== 9. 问题详情 ==========
+GET {{api}}/questions/{{questionId}}
+
+
+### ========== 10. 回答 ==========
+# @name postAnswer
+POST {{api}}/questions/{{questionId}}/answers
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrf.response.body.token}}
+
+{
+  "body": "因为每一层索引都能把搜索范围缩小一半，总层数是 log n，所以整体是 O(log n)。"
+}
+
+
+### ========== 11. 投票 ==========
+# targetType 取 QUESTION 或 ANSWER；value 取 1 / -1 / 0（0 表示撤销）。
+PUT {{api}}/votes
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrf.response.body.token}}
+
+{
+  "targetType": "ANSWER",
+  "targetId": {{answerId}},
+  "value": 1
+}
+
+
+### ========== 12. 采纳答案 ==========
+# 采纳者必须是提问者或课程管理者。采纳后声誉异步 +15。
+PUT {{api}}/questions/{{questionId}}/accepted-answer
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrf.response.body.token}}
+
+{
+  "answerId": {{answerId}}
+}
+
+
+### ========== 13. 声誉档案 ==========
+# 本人可见悬赏积分；查看他人时该字段为 null。
+GET {{api}}/reputation/profile
+
+
+### ========== 14. 登出 ==========
+# 由安全过滤链处理，不是 Controller 里的方法。
+POST {{api}}/auth/logout
+X-XSRF-TOKEN: {{csrf.response.body.token}}
