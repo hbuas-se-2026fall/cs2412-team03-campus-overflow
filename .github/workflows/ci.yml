@@ -26,29 +26,33 @@ jobs:
       - name: 编译
         run: mvn -B -f backend/pom.xml clean compile
 
-      # 阶段 2：渐进式单元测试（ADR-009）。S2 起把已稳定的 Q&A 领域层纳入门禁。
-      # co-qa-application / reputation / discovery 的骨架仍是 TODO，暂不纳入，
-      # 等 PR #72 与对应实现合入、红测试清零后再放开，避免把全队 PR 卡红。
-      - name: 单元测试（S0 + Q&A 领域层）
-        run: mvn -B -f backend/pom.xml test -pl co-shared-kernel,co-identity,co-qa/co-qa-domain -am
+      # 阶段 2：全后端单元测试，先给一次快速反馈。#95 骨架清零后不再用 -pl 圈定子集。
+      - name: 单元测试（全后端）
+        run: mvn -B -f backend/pom.xml test
 
-      # 阶段 2b：Q&A 覆盖率门禁（Issue #19）
-      # 父 pom 的 domain.coverage.minimum 默认 0，这里用 -D 提到 0.70；
-      # PR #72 合入后模块自带 0.70 阈值，该参数不冲突。
+      # 阶段 2b：全后端覆盖率门禁（Issue #97）
+      # 阈值只在根 POM 定义一次（0.70），父 POM 的 jacoco:check 被所有模块继承；
+      # 这里不再用 -D 提阈值、不再用 -pl 只圈定 Q&A 一个模块，也不再用任何覆盖率覆盖参数。
+      # 集成测试交给阶段 4（有 Docker 且允许失败），本步骤跳过 IT，让门禁只依据
+      # 单元测试的真实覆盖率；-DskipITs 是 failsafe 的标准开关，与覆盖率阈值无关。
       # 关键：jacoco:check 找不到 jacoco.exec 时会静默跳过并打印
-      # "All coverage checks have been met."，所以必须额外断言 exec 确实生成，
+      # "All coverage checks have been met."，所以必须额外断言关键模块的 exec 确实生成，
       # 否则单测哪天被移出 CI，门禁会悄悄失效而不报错。
-      - name: Q&A 领域层覆盖率门禁
+      - name: 全后端覆盖率门禁
         run: |
-          mvn -B -f backend/pom.xml verify -pl co-qa/co-qa-domain -am -Ddomain.coverage.minimum=0.70
-          test -s backend/co-qa/co-qa-domain/target/jacoco.exec || {
-            echo "::error::jacoco.exec 缺失或为空：单测未真正执行，覆盖率门禁会静默跳过"
-            exit 1
-          }
+          mvn -B -f backend/pom.xml verify -DskipITs=true
+          for module in co-shared-kernel co-qa/co-qa-domain co-bootstrap; do
+            test -s "backend/$module/target/jacoco.exec" || {
+              echo "::error::backend/$module/target/jacoco.exec 缺失或为空：单测未真正执行，覆盖率门禁会静默跳过"
+              exit 1
+            }
+          done
 
       # 阶段 3：架构适应度函数（ArchUnit：FF-1~FF-6）
+      # 只筛选 ArchitectureTest 跑，加 -Djacoco.skip=true 是为了别让这一次"只有一个测试"的运行
+      # 把阶段 2b 生成的 jacoco.exec 覆盖掉；门禁已在 2b 阻断式执行过，这里不重复采集。
       - name: 架构约束检查
-        run: mvn -B -f backend/pom.xml test -pl co-bootstrap -am -Dtest=ArchitectureTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false
+        run: mvn -B -f backend/pom.xml test -pl co-bootstrap -am -Dtest=ArchitectureTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true
 
       # 阶段 4：集成测试（ADR-009：S0 暂不阻断合并，允许失败；S3 起开启）
       # 原来的 -Dsurefire.skip=true 是无效参数（surefire 只认 -DskipTests），
@@ -107,8 +111,8 @@ jobs:
   # 也不依赖 repo secret（临时容器默认 admin/admin，运行时自己生成 token）。
   # 质量门禁在 job 里通过 API 建一个自定义 gate（Coverage>60% / Bugs=0 /
   # Vulnerabilities=0 / Code Smells<10），再把项目绑定到这个 gate。
-  # 门槛暂用 60%：当前全后端覆盖率只有 Q&A+共享内核口径 74.3%，co-bootstrap
-  # 未覆盖，照抄 issue 的 70% 会直接红；等装配层测试补齐后再提到 70%。
+  # 门槛暂用 60%：new_coverage 只看新增代码，与 #97 根 POM 里的整体 70% 门禁不是同一口径。
+  # co-bootstrap 装配层测试已在 #97 补齐，但把这里提到 70% 前需要先量出新代码口径的基线。
   # 扫描报告传 artifact，替代"Dashboard 公网可访问"（临时容器跑完即销毁）。
   sonar:
     name: SonarQube 质量门禁
