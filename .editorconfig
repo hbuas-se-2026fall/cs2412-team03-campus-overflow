@@ -1,0 +1,25 @@
+root = true
+
+# 全仓统一：UTF-8 + LF，避免再次出现「整份文件 +99/−99 其实只改了行尾」的 diff
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Markdown 行尾双空格是有意义的换行，不能裁掉
+[*.{md,markdown}]
+trim_trailing_whitespace = false
+
+# 前端与配置类文件用 2 空格（与 frontend/ 现有代码、yml 缩进一致）
+[*.{yml,yaml,json,ts,tsx,js,jsx,css,scss,html}]
+indent_size = 2
+
+# Windows 脚本必须 CRLF，否则 cmd/powershell 解析异常
+[*.{cmd,bat,ps1}]
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab
