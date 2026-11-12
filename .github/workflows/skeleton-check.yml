@@ -33,6 +33,19 @@ jobs:
 
       - name: 参考实现测试（Identity + Shared Kernel，必须绿）
         run: mvn -B -f backend/pom.xml test -pl co-identity/co-identity-domain,co-shared-kernel -DfailIfNoTests=false
+      # §6.5「移除全部行走骨架」的自动化守卫。骨架在 S3 已清零（Reputation 的 14 处由 #90/#96/#100 补完），
+      # 这条防止它悄悄回潮：main 代码里再出现 TODO(Sx) 或 UnsupportedOperationException 就红。
+      # 只查 src/main —— 测试里 CommonMark/AssertJ 之类断言不可变集合抛 UOE 是正常用法。
+      - name: 行走骨架归零检查
+        run: |
+          set -euo pipefail
+          hits=$(grep -rnE 'TODO\(S[0-9]+\)|UnsupportedOperationException' backend --include='*.java' | grep '/src/main/' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::main 代码里检测到行走骨架残留（TODO(Sx) / UnsupportedOperationException），§6.5 要求为 0"
+            echo "$hits"
+            exit 1
+          fi
+          echo "✅ main 代码中 TODO(Sx) 与 UnsupportedOperationException 均为 0"
 
   frontend-check:
     name: frontend-check
