@@ -1,6 +1,5 @@
 # 黄振亚
 
-- 学号：2024109324
 - 班级：计科2412
 - 角色：DV1（Developer / Verifier，负责 Discovery 上下文 + 测试验证）
 - GitHub：[deadlie](https://github.com/deadlie)

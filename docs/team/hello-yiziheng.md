@@ -1,6 +1,5 @@
 # 易子恒
 
-- 学号：2024117154
 - 班级：计科2412
 - 角色：Developer（开发者）
 - GitHub：[moOvO760](https://github.com/moOvO760)
