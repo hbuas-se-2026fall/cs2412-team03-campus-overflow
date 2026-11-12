@@ -18,18 +18,18 @@
 | S2-E1 | Epic | Q&A 领域规则完整实现 | Dev | 实现 Question/Answer/Vote/Comment 全部领域规则 | 支撑问答核心 | Must | — | T-S2-01～T-S2-06 | S2 | 待细化 |
 | S2-E2 | Epic | Q&A 应用层用例 | Dev | 实现提问/回答/投票/评论编排与事件发布 | 领域规则可被接口调用 | Must | — | T-S2-07～T-S2-12 | S2 | 待细化 |
 | S2-011 | Story | 改票（撤销/换边） | 学生 | 修改自己已投的票 | 纠正误投，按增量结算 | Must | 2 | [S2-011-改票.feature](stories/S2-011-改票.feature) | S2 | 待细化 |
-| S2-012 | Story | 热门标签聚合 | 访客 | 查看热门标签云 | 从标签进入讨论 | Should | 2 | 【待填】 | S2 | 待细化 |
-| S2-013 | Story | 助教背书回答 | 助教 | 对优质回答背书一次 | 标记权威答案 | Should | 2 | 【待填】 | S2 | 待细化 |
+| S2-012 | Story | 热门标签聚合 | 访客 | 查看热门标签云 | 从标签进入讨论 | Should | 2 | 未建 Issue；对应 PB-16；验收测试 QuestionQueryServiceTest | S2 | 待细化 |
+| S2-013 | Story | 助教背书回答 | 助教 | 对优质回答背书一次 | 标记权威答案 | Should | 2 | 未建 Issue；对应 PB-14；验收测试 AnswerTest、AnswerAndVoteServiceTest | S2 | 待细化 |
 | S3-E1 | Epic | Reputation 领域规则 | Dev | 实现规则簿/账本/徽章/悬赏 | 声誉激励可结算 | Must | — | T-S3-R01～T-S3-R05 | S3 | 待细化 |
 | S3-E2 | Epic | Reputation 应用层 | Dev | 徽章/悬赏/排行榜/对账/事件处理 | 声誉事件自动结算 | Must | — | T-S3-R06～T-S3-R12 | S3 | 待细化 |
-| S3-014 | Story | 声誉账本查看 | 用户 | 查看自己的加分/扣分流水 | 了解声誉来源 | Must | 2 | 【待填】 | S3 | 待细化 |
-| S3-015 | Story | 排行榜 | 访客 | 查看本课程贡献榜 | 识别优质回答者 | Should | 2 | 【待填】 | S3 | 待细化 |
-| S3-016 | Story | 悬赏发起与结算 | 学生 | 用声誉悬赏难题并在采纳后结算 | 提高难题关注度 | Should | 3 | 【待填】 | S3 | 待细化 |
+| S3-014 | Story | 声誉账本查看 | 用户 | 查看自己的加分/扣分流水 | 了解声誉来源 | Must | 2 | 未建 Issue；对应 PB-27；验收测试 ReputationQueryServiceTest | S3 | 待细化 |
+| S3-015 | Story | 排行榜 | 访客 | 查看本课程贡献榜 | 识别优质回答者 | Should | 2 | 未建 Issue；对应 PB-26；验收测试 LeaderboardServiceTest | S3 | 待细化 |
+| S3-016 | Story | 悬赏发起与结算 | 学生 | 用声誉悬赏难题并在采纳后结算 | 提高难题关注度 | Should | 3 | 未建 Issue；对应 PB-24/25；验收测试 BountyAndAccountTest、BountyServiceTest | S3 | 待细化 |
 | S3-E3 | Epic | Discovery 领域规则 | Dev | 实现搜索词/相关策略/@解析/通知实体 | 支撑发现能力 | Must | — | T-S3-D01～T-S3-D04 | S3 | 待细化 |
 | S3-E4 | Epic | Discovery 应用层 | Dev | 搜索/索引投影/通知服务 | 内容可检索、事件可通知 | Must | — | T-S3-D05～T-S3-D08 | S3 | 待细化 |
-| S3-017 | Story | 中文全文搜索 | 用户 | 按关键词搜问题/回答 | 找到历史讨论 | Must | 3 | 【待填】 | S3 | 待细化 |
-| S3-018 | Story | 相关问题推荐 | 用户 | 阅读时看到相似问题 | 一次解决关联疑问 | Should | 2 | 【待填】 | S3 | 待细化 |
-| S3-019 | Story | 通知中心 | 用户 | 查看/标记已读通知 | 不遗漏回答与采纳 | Must | 2 | 【待填】 | S3 | 待细化 |
+| S3-017 | Story | 中文全文搜索 | 用户 | 按关键词搜问题/回答 | 找到历史讨论 | Must | 3 | 未建 Issue；对应 PB-31；验收测试 DiscoveryDomainTest、DiscoveryQueryServiceTest | S3 | 待细化 |
+| S3-018 | Story | 相关问题推荐 | 用户 | 阅读时看到相似问题 | 一次解决关联疑问 | Should | 2 | 未建 Issue；对应 PB-33；验收测试 DiscoveryDomainTest | S3 | 待细化 |
+| S3-019 | Story | 通知中心 | 用户 | 查看/标记已读通知 | 不遗漏回答与采纳 | Must | 2 | 未建 Issue；对应 PB-36；验收测试 NotificationServiceTest、NotificationProjectorTest | S3 | 待细化 |
 | S4-020 | Story | 前端体验打磨 | Dev | 分页/骨架屏/Markdown 预览/移动端 | 提升使用体验 | Could | — | 课程前端增强任务 | S4 | 待细化 |
 | X-01 | Story | 实时聊天 | — | — | — | Won't | — | 范围外，见产品愿景 | — | 待细化 |
 | X-02 | Story | AI 自动回答 | — | — | — | Won't | — | 范围外，见产品愿景 | — | 待细化 |
@@ -41,3 +41,4 @@
   - 结构自检：`node scripts/verify-gherkin.mjs`；
 - Epic 不直接领取，拆成对应 T-Sx-xx 开发任务 Issue 后执行；
 - 每周站会复核优先级，Won't 项不进入排期。
+- 2026-11-12：S2-012、S2-013、S3-014～S3-019 的“验收标准”列已按“未建 Issue → 对应 PB + 现有测试类”补齐；未新建 Issue，未编造 Gherkin。
