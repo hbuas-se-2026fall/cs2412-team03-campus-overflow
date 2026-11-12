@@ -115,7 +115,7 @@ cd ../frontend && npm install && npm run dev      # http://localhost:5173
 | 前端 | 类型检查与构建通过 | `cd frontend && npm run typecheck && npm run build` |
 | 骨架检查 | 每次 PR 必绿 | GitHub Actions `skeleton-check` |
 
-覆盖率门槛写在 `backend/pom.xml` 的 `domain.coverage.minimum`（当前 `0.70`），经父 POM 的 `check-all-modules` 继承到全部 27 个模块。确实无法达标的模块用 `jacoco.check.skip` 显式登记并写明理由，**不允许用命令行 `-D` 参数绕过**。
+覆盖率门槛写在 `backend/pom.xml` 的 `domain.coverage.minimum`（当前 `0.70`），经父 POM 的 `check-all-modules` 继承到全部 27 个模块。**当前 27 个模块全部生效、无任何豁免**（历史上曾用 `jacoco.check.skip` 显式登记一处，已在 PR #100 解除）；**不允许用命令行 `-D` 参数绕过**。
 
 ## 流水线一览
 
