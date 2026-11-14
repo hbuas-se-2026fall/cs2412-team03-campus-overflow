@@ -1,0 +1,30 @@
+# 行尾与二进制策略。
+#
+# 背景：本仓库两次因为 Windows 本地 CRLF 造成「整份文件全变」的假 diff
+#   - #88：会议纪要 +99/−91，实际正文只改了约 30 行
+#   - #102：同一类问题再次出现在 docs/ 的批量编辑里
+# 用 text=auto + eol=lf 把归一化交给 git，评审时 diff 只反映真实改动。
+* text=auto eol=lf
+
+# Windows 脚本保持 CRLF：cmd.exe / powershell.exe 对 LF 的 .bat/.cmd 有不兼容情况
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制：禁止行尾转换，也禁止文本 diff
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.svg  text eol=lf
+*.zip  binary
+*.jar  binary
+*.pptx binary
+*.docx binary
+*.xlsx binary
+
+# 文档配图不计入语言统计，避免仓库语言比例被截图干扰
+docs/**/*.png linguist-documentation
+docs/**/*.pdf linguist-documentation
