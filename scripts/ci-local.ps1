@@ -6,13 +6,16 @@
 #
 # 本脚本按 .github/workflows/ci.yml 的阶段顺序在本地重放，**只跳过需要 Docker 的部分**
 # （SonarQube 门禁、Testcontainers 集成测试、镜像构建、compose 全栈）：
-#   1) 编译            mvn -f backend/pom.xml clean compile
-#   2) 单元测试        mvn -f backend/pom.xml test
-#   3) 架构约束        mvn -f backend/pom.xml test -pl co-bootstrap -am -Dtest=ArchitectureTest
-#   4) 覆盖率门禁      mvn -f backend/pom.xml verify -DskipITs        （离线模式会跳过，见下）
-#   5) 行走骨架归零    扫描 src/main 下的 TODO(Sx) 与 UnsupportedOperationException
-#   6) 前端类型检查    npm run typecheck
-#   7) 前端构建        npm run build
+#   1)  编译            mvn -f backend/pom.xml clean compile
+#   2)  单元测试        mvn -f backend/pom.xml test
+#   3)  架构约束        mvn -f backend/pom.xml test -pl co-bootstrap -am -Dtest=ArchitectureTest
+#   4)  覆盖率门禁      mvn -f backend/pom.xml verify -DskipITs        （离线模式会跳过，见下）
+#   5)  行走骨架归零    扫描 src/main 下的 TODO(Sx) 与 UnsupportedOperationException
+#   6)  错误码一致性    node scripts/verify-error-codes.mjs（代码 ↔ 文档双向核对）
+#   7)  前端代码规范    npm run lint
+#   8)  前端单元测试    npm test（Vitest）
+#   9)  前端类型检查    npm run typecheck
+#   10) 前端构建        npm run build
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File scripts/ci-local.ps1
@@ -84,15 +87,15 @@ Write-Host "logs:    $logDir"
 
 $pom = Join-Path $backend 'pom.xml'
 
-Run-Stage -Name '1/7 编译' -Slug '01-compile' -Body {
+Run-Stage -Name '1/10 编译' -Slug '01-compile' -Body {
     & mvn @offlineArg -B -ntp -f $pom clean compile
 }
 
-Run-Stage -Name '2/7 单元测试（全后端）' -Slug '02-test' -Body {
+Run-Stage -Name '2/10 单元测试（全后端）' -Slug '02-test' -Body {
     & mvn @offlineArg -B -ntp -f $pom test
 }
 
-Run-Stage -Name '3/7 架构约束（ArchUnit）' -Slug '03-archunit' -Body {
+Run-Stage -Name '3/10 架构约束（ArchUnit）' -Slug '03-archunit' -Body {
     & mvn @offlineArg -B -ntp -f $pom test -pl co-bootstrap -am '-Dtest=ArchitectureTest' `
         '-DfailIfNoTests=false' '-Dsurefire.failIfNoSpecifiedTests=false'
 }
@@ -101,12 +104,12 @@ $coverageSkip = ''
 if ($Offline) {
     $coverageSkip = '离线模式跳过：verify 阶段会触发 co-bootstrap 的 spring-boot:repackage，其插件依赖未进本地仓库；联网跑一次或缓存后即可执行'
 }
-Run-Stage -Name '4/7 覆盖率门禁（-DskipITs）' -Slug '04-coverage' -SkipReason $coverageSkip -Body {
+Run-Stage -Name '4/10 覆盖率门禁（-DskipITs）' -Slug '04-coverage' -SkipReason $coverageSkip -Body {
     & mvn @offlineArg -B -ntp -f $pom verify '-DskipITs'
 }
 
 Write-Host ''
-Write-Host '==> 5/7 行走骨架归零检查' -ForegroundColor Cyan
+Write-Host '==> 5/10 行走骨架归零检查' -ForegroundColor Cyan
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $hits = Get-ChildItem -LiteralPath $backend -Recurse -Filter *.java -File |
     Where-Object { $_.FullName -match '[\\/]src[\\/]main[\\/]' } |
@@ -116,10 +119,26 @@ $sw.Stop()
 if ($hits) {
     Write-Host '    main 代码里检测到行走骨架残留（§6.5 要求为 0）：' -ForegroundColor Red
     $hits | Select-Object -First 20 | ForEach-Object { Write-Host ("      {0}:{1}: {2}" -f $_.Filename, $_.LineNumber, $_.Line.Trim()) }
-    Record '5/7 行走骨架归零' 'FAIL' 1 $sw.Elapsed.TotalSeconds ''
+    Record '5/10 行走骨架归零' 'FAIL' 1 $sw.Elapsed.TotalSeconds ''
 } else {
     Write-Host '    [ok] main 代码中 TODO(Sx) 与 UnsupportedOperationException 均为 0' -ForegroundColor Green
-    Record '5/7 行走骨架归零' 'PASS' 0 $sw.Elapsed.TotalSeconds ''
+    Record '5/10 行走骨架归零' 'PASS' 0 $sw.Elapsed.TotalSeconds ''
+}
+
+Write-Host ''
+Write-Host '==> 6/10 错误码一致性检查（代码 ↔ 文档）' -ForegroundColor Cyan
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+Push-Location $repoRoot
+& node scripts/verify-error-codes.mjs
+$c = $LASTEXITCODE
+Pop-Location
+$sw.Stop()
+if ($c -eq 0) {
+    Write-Host '    [ok] 文档里出现的错误码都能在 src/main 中找到' -ForegroundColor Green
+    Record '6/10 错误码一致性' 'PASS' 0 $sw.Elapsed.TotalSeconds ''
+} else {
+    Write-Host '    文档里出现了代码中不存在的错误码（过期或错别字）' -ForegroundColor Red
+    Record '6/10 错误码一致性' 'FAIL' $c $sw.Elapsed.TotalSeconds '见上方输出'
 }
 
 $frontendSkip = ''
@@ -131,7 +150,33 @@ $tmpDir = Join-Path $logDir 'tmp'
 New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 $savedTemp = @{ TEMP = $env:TEMP; TMP = $env:TMP }
 
-Run-Stage -Name '6/7 前端类型检查' -Slug '06-typecheck' -SkipReason $frontendSkip -Body {
+Run-Stage -Name '7/10 前端代码规范（ESLint）' -Slug '07-lint' -SkipReason $frontendSkip -Body {
+    $env:TEMP = $tmpDir
+    $env:TMP = $tmpDir
+    Push-Location $frontend
+    if (-not (Test-Path 'node_modules')) { & npm install --no-audit --no-fund }
+    & npm run lint
+    $c = $LASTEXITCODE
+    Pop-Location
+    $env:TEMP = $savedTemp.TEMP
+    $env:TMP = $savedTemp.TMP
+    $global:LASTEXITCODE = $c
+}
+
+Run-Stage -Name '8/10 前端单元测试（Vitest）' -Slug '08-unit' -SkipReason $frontendSkip -Body {
+    $env:TEMP = $tmpDir
+    $env:TMP = $tmpDir
+    Push-Location $frontend
+    if (-not (Test-Path 'node_modules')) { & npm install --no-audit --no-fund }
+    & npm test
+    $c = $LASTEXITCODE
+    Pop-Location
+    $env:TEMP = $savedTemp.TEMP
+    $env:TMP = $savedTemp.TMP
+    $global:LASTEXITCODE = $c
+}
+
+Run-Stage -Name '9/10 前端类型检查' -Slug '09-typecheck' -SkipReason $frontendSkip -Body {
     $env:TEMP = $tmpDir
     $env:TMP = $tmpDir
     Push-Location $frontend
@@ -144,7 +189,7 @@ Run-Stage -Name '6/7 前端类型检查' -Slug '06-typecheck' -SkipReason $front
     $global:LASTEXITCODE = $c
 }
 
-Run-Stage -Name '7/7 前端构建' -Slug '07-build' -SkipReason $frontendSkip -Body {
+Run-Stage -Name '10/10 前端构建' -Slug '10-build' -SkipReason $frontendSkip -Body {
     $env:TEMP = $tmpDir
     $env:TMP = $tmpDir
     Push-Location $frontend
