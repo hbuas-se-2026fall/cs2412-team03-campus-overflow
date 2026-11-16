@@ -194,3 +194,5 @@ Cookie: XSRF-TOKEN={{xsrfToken}}
 
 ### 22. 登出后再查 /me：期望 401
 GET {{api}}/auth/me
+
+### 验收：易子恒 2026-11-16 22 步全部符合预期
