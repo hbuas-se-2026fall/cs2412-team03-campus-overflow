@@ -59,8 +59,8 @@ GET {{api}}/courses
 GET {{api}}/courses/mine
 
 
-### 6. 加入课程：期望 200/201
-# 已在成员中会返回冲突提示，属正常。
+### 6. 加入课程：期望 200/201/409
+# 409 = 已是成员，属正常。
 POST {{api}}/courses/{{courseId}}/join
 X-XSRF-TOKEN: {{xsrfToken}}
 Cookie: XSRF-TOKEN={{xsrfToken}}
@@ -110,9 +110,10 @@ Cookie: XSRF-TOKEN={{xsrfToken}}
 %}
 
 
-### 11. 给回答投票（+1）：期望 200
+### 11. 给自己的回答投票（+1）：期望 422，验证自投被拒绝
 # targetType 取 QUESTION 或 ANSWER；value 取 1 / -1 / 0（0 表示撤销）。
-# 不能给自己的内容投票，会返回领域错误码。
+# 当前单账号流程里 2023001 同时是提问者与回答者，实际返回 422 QA-1015「不能给自己的内容投票」；
+# 这是领域规则的正确行为。若改用另一个账号回答，此步应期望 200。
 PUT {{api}}/votes
 Content-Type: application/json
 X-XSRF-TOKEN: {{xsrfToken}}
@@ -125,7 +126,7 @@ Cookie: XSRF-TOKEN={{xsrfToken}}
 }
 
 
-### 12. 改投（+1 → -1）：期望 200，验证同一人对同一内容只有一票
+### 12. 给自己的回答改投（-1）：期望 422，仍拒绝自投
 PUT {{api}}/votes
 Content-Type: application/json
 X-XSRF-TOKEN: {{xsrfToken}}
@@ -138,7 +139,8 @@ Cookie: XSRF-TOKEN={{xsrfToken}}
 }
 
 
-### 13. 采纳最佳答案：期望 200
+### 13. 采纳最佳答案：期望 204
+# 实际返回 204（成功，无响应体）。
 # 采纳后异步触发：声誉账本 +15 → 徽章判定 → 悬赏结算 → 通知投影。
 # 采纳者是提问者本人，符合规则。
 PUT {{api}}/questions/{{questionId}}/accepted-answer
