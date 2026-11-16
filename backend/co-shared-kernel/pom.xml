@@ -11,8 +11,13 @@
     <artifactId>co-shared-kernel</artifactId>
     <packaging>jar</packaging>
     <name>CampusOverflow :: Shared Kernel</name>
-    <dependencies>
-        <dependency>
+    <!-- 本模块覆盖率门禁：实测值见 docs/05-质量/测试策略.md，取比实测低 3~5 个点作为下限，
+         目的是防止后续改动把覆盖拉回去，而不是为了数字好看。全局默认 0.75，见根 POM。 -->
+    <properties>
+        <domain.coverage.minimum>0.95</domain.coverage.minimum>
+    </properties>
+
+    <dependencies>        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>

@@ -13,9 +13,9 @@
     <name>Q&amp;A 问答核心 :: domain（纯 Java）</name>
     <properties>
         <!-- 适应度函数 FF-4：Q&A 领域层行覆盖率门禁（issue #19）。
-             实测约 81.5%，此处设 0.70 留出缓冲，避免正常的重构让流水线误红。
+             实测 230/230 行 = 100%（Question / Answer / MarkdownBody / Tags / Comment 全部覆盖），故把下限提到 0.95：留 11 行缓冲，但覆盖被拉回去就会红。
              覆盖全模块的通用阈值 domain.coverage.minimum 仍保持 0，不影响其他上下文。 -->
-        <qa.domain.coverage.minimum>0.70</qa.domain.coverage.minimum>
+        <qa.domain.coverage.minimum>0.95</qa.domain.coverage.minimum>
     </properties>
     <dependencies>
         <dependency>
