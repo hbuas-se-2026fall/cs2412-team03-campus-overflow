@@ -8,10 +8,18 @@ on:
   pull_request:
     branches: [main, develop]
 
+# 同一 ref 只保留最新一次运行：连续推送会取消排队中/运行中的旧 run。
+# 这是纯省 Action 额度的改动，不影响任何检查的存在与结论（被取消的 run 不写结论）。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: 后端构建与验证
     runs-on: ubuntu-latest
+    # 实测约 8-10 分钟；给 20 分钟上限，避免异常卡死把额度烧满
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +82,7 @@ jobs:
   frontend:
     name: 前端构建
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -102,6 +111,7 @@ jobs:
   images:
     name: 容器镜像构建
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [backend, frontend]
     if: github.event_name == 'push'
     steps:
@@ -122,6 +132,8 @@ jobs:
   sonar:
     name: SonarQube 质量门禁
     runs-on: ubuntu-latest
+    # 起临时 SonarQube 容器 + 全量扫描，实测 5-6 分钟
+    timeout-minutes: 20
     needs: [backend]
     if: github.event_name == 'pull_request'
     steps:
