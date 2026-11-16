@@ -47,6 +47,12 @@ jobs:
           fi
           echo "✅ main 代码中 TODO(Sx) 与 UnsupportedOperationException 均为 0"
 
+      # docs/错误码.md 曾长期只写 33 个「常用错误码」，而代码里有 70+ 个（#124 补齐 41 个）。
+      # 文档靠人肉维护必然再漂移，所以把「代码 ↔ 文档」的一致性做成可执行检查：
+      # 文档里出现代码中不存在的错误码 → 失败；代码里有但文档没写 → 目前只警告（#124 合入后可加 --strict）。
+      - name: 错误码一致性检查（代码 ↔ 文档）
+        run: node scripts/verify-error-codes.mjs
+
   frontend-check:
     name: frontend-check
     runs-on: ubuntu-latest

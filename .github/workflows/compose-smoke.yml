@@ -39,7 +39,8 @@ jobs:
   full-stack:
     name: 全栈联调 / 健康检查与反代
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # 实测一次全栈 up + 逐项校验约 5 分钟；35 分钟的上限只是把额度占着，收紧到 15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
