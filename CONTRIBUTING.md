@@ -49,6 +49,25 @@ mvn test -pl co-bootstrap -Dtest=ArchitectureTest
 cd frontend && npm run typecheck && npm run build
 ```
 
+### 5.1 Windows：一条命令复现 CI 的全部阶段
+
+Actions 额度耗尽期间（见 Issue #120），想证明「我这分支和主干一样绿」只能本地跑。别自己拼 `mvn` 命令——
+阶段顺序、离线降级、临时目录这些问题脚本里都处理好了：
+
+```powershell
+# 全量：编译 → 全量单测 → 架构约束 → 覆盖率门禁 → 骨架零容忍 → 前端 typecheck → 前端 build
+powershell -ExecutionPolicy Bypass -File scripts/ci-local.ps1
+
+# 没网 / 不想等前端：跳过需要外网的阶段（覆盖率门禁会标 SKIP 并说明原因，不会假装通过）
+powershell -ExecutionPolicy Bypass -File scripts/ci-local.ps1 -Offline -SkipFrontend
+```
+
+退出码 `0` = 没有失败阶段，`1` = 有阶段失败（会打印失败阶段名）。
+需要 Docker 的部分（SonarQube、Testcontainers 集成测试、镜像构建、compose 全栈）脚本不覆盖，
+那些由 `integration-test.yml` / `compose-smoke.yml` 负责。完整说明见 [`docs/05-质量/本地复现CI.md`](docs/05-质量/本地复现CI.md)。
+
+> 提 PR 前请至少跑一次全量并把结果贴进 PR 描述——这不是形式主义，评审的人没法从 Actions 页面看到绿灯。
+
 ## 6. 如何求助
 
 1. 卡住超过 4 小时：在 Issue 评论阻塞原因并 @SM，不许闷头死磕；
