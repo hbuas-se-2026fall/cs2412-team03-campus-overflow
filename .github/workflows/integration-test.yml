@@ -20,11 +20,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: it-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lab7-acceptance:
     name: '#34 验收 / 真实 MySQL 落库'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -70,7 +74,7 @@ jobs:
     name: 'S3 规格 / 完整业务链路（如实标红）'
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 

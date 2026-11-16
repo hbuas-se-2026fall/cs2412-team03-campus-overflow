@@ -97,6 +97,30 @@ class ArchitectureTest {
             .should().resideInAPackage("..infrastructure..")
             .because("JPA 实体是持久化模型，与领域模型分离（ADR-008）");
 
+    /** FF-7：应用层（用例编排）不得直接碰 SQL / JPA —— 只能通过领域仓储端口访问数据。 */
+    @ArchTest
+    static final ArchRule application_layer_does_not_touch_sql = noClasses()
+            .that().resideInAPackage("com.campusoverflow..application..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "java.sql..", "javax.sql..", "jakarta.persistence..", "org.springframework.jdbc..")
+            .because("用例编排必须通过仓储端口访问数据，SQL 与 JPA 细节留在 infrastructure（FF-7）");
+
+    /** FF-8：领域层不得被 Spring 注解标记——否则「纯 Java 领域」只是口号。 */
+    @ArchTest
+    static final ArchRule domain_is_not_managed_by_spring = noClasses()
+            .that().resideInAPackage("com.campusoverflow..domain..")
+            .should().beAnnotatedWith("org.springframework.stereotype.Component")
+            .orShould().beAnnotatedWith("org.springframework.stereotype.Service")
+            .orShould().beAnnotatedWith("org.springframework.stereotype.Repository")
+            .because("领域对象由应用层显式构造，不交给 Spring 容器托管（FF-8）");
+
+    /** FF-9：Spring 仓储实现必须待在 infrastructure 层，领域侧只保留接口。 */
+    @ArchTest
+    static final ArchRule spring_repositories_live_in_infrastructure = classes()
+            .that().areAnnotatedWith(org.springframework.stereotype.Repository.class)
+            .should().resideInAPackage("..infrastructure..")
+            .because("仓储实现属于持久化适配器，不能混进领域或应用层（FF-9）");
+
     /** FF-6：每个上下文的表必须使用自己的前缀，物理隔离数据所有权。 */
     @ArchTest
     static final ArchRule tables_use_context_prefix = classes()

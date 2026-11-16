@@ -54,6 +54,7 @@ jobs:
   build-and-publish:
     name: 镜像构建与发布
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
