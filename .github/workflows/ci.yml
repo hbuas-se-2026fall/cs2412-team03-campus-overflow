@@ -99,6 +99,11 @@ jobs:
       - name: 类型检查
         working-directory: frontend
         run: npm run typecheck
+      # Issue #116：前端此前只有 lint / typecheck / build，一行单测都没有——
+      # api 层的 CSRF 双提交、错误码映射这类纯逻辑全靠人工点页面验证。
+      - name: 单元测试（Vitest）
+        working-directory: frontend
+        run: npm test
       - name: 构建
         working-directory: frontend
         run: npm run build
