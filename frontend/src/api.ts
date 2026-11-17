@@ -41,6 +41,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 const get = <T>(path: string) => request<T>('GET', path);
 
 export const api = {
+  // --- 新增课程接口 ---
+  courses: (page = 1) => get<Page<any>>(`/v1/courses?page=${page}`),
+  myCourses: () => get<any[]>('/v1/courses/mine'),
+  joinCourse: (courseId: number) => request<void>('POST', `/v1/courses/${courseId}/join`),
   csrf: () => get<{ token: string }>('/v1/auth/csrf'),
   register: (body: Record<string, string>) => request<{ id: number }>('POST', '/v1/auth/register', body),
   login: (username: string, password: string) => request<Me>('POST', '/v1/auth/login', { username, password }),

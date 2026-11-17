@@ -1,12 +1,15 @@
 # 骨架绿灯流水线：只验证"结构没坏"，不跑 TODO 测试
-# 与 ci.yml 的分工：ci.yml 是全量目标（现在红是预期），本流水线是日常门禁（必须绿）
+# 与 ci.yml 的分工：ci.yml 是全量验证（#72 合并后已全绿），本流水线是日常门禁（必须绿）
+# 两条流水线的前端 job 都必须真跑 ESLint，详见 #42。
 name: skeleton-check
 
 on:
   # 不限制 base 分支：所有 PR 都触发，避免 stacked PR 等不到检查而锁死合并
   pull_request:
   push:
-    branches: [main]
+    # develop 是集成分支，直接推送也要过这套日常门禁；此前只挂 main，
+    # 等于 develop 上只有 ci.yml 兜底，本流水线的骨架/前端检查会被绕过。
+    branches: [main, develop]
 
 jobs:
   backend-skeleton:
@@ -30,6 +33,25 @@ jobs:
 
       - name: 参考实现测试（Identity + Shared Kernel，必须绿）
         run: mvn -B -f backend/pom.xml test -pl co-identity/co-identity-domain,co-shared-kernel -DfailIfNoTests=false
+      # §6.5「移除全部行走骨架」的自动化守卫。骨架在 S3 已清零（Reputation 的 14 处由 #90/#96/#100 补完），
+      # 这条防止它悄悄回潮：main 代码里再出现 TODO(Sx) 或 UnsupportedOperationException 就红。
+      # 只查 src/main —— 测试里 CommonMark/AssertJ 之类断言不可变集合抛 UOE 是正常用法。
+      - name: 行走骨架归零检查
+        run: |
+          set -euo pipefail
+          hits=$(grep -rnE 'TODO\(S[0-9]+\)|UnsupportedOperationException' backend --include='*.java' | grep '/src/main/' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::main 代码里检测到行走骨架残留（TODO(Sx) / UnsupportedOperationException），§6.5 要求为 0"
+            echo "$hits"
+            exit 1
+          fi
+          echo "✅ main 代码中 TODO(Sx) 与 UnsupportedOperationException 均为 0"
+
+      # docs/错误码.md 曾长期只写 33 个「常用错误码」，而代码里有 70+ 个（#124 补齐 41 个）。
+      # 文档靠人肉维护必然再漂移，所以把「代码 ↔ 文档」的一致性做成可执行检查：
+      # 文档里出现代码中不存在的错误码 → 失败；代码里有但文档没写 → 目前只警告（#124 合入后可加 --strict）。
+      - name: 错误码一致性检查（代码 ↔ 文档）
+        run: node scripts/verify-error-codes.mjs
 
   frontend-check:
     name: frontend-check
@@ -42,6 +64,11 @@ jobs:
       - name: 安装依赖
         working-directory: frontend
         run: npm install --no-audit --no-fund
+      # #42：与 ci.yml 的「前端构建」保持同样的门禁强度，
+      # PR 上两条都必须真跑 ESLint，不允许只 typecheck + build 就放行。
+      - name: 代码规范检查（ESLint）
+        working-directory: frontend
+        run: npm run lint
       - name: 类型检查
         working-directory: frontend
         run: npm run typecheck

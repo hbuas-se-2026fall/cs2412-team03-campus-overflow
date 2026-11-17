@@ -13,6 +13,7 @@ import com.campusoverflow.reputation.api.event.BountyClosedEvent;
 import com.campusoverflow.reputation.api.event.BountyOpenedEvent;
 import com.campusoverflow.shared.event.IntegrationEvent;
 import com.campusoverflow.shared.event.ProcessedEventStore;
+import java.util.List;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,71 +35,102 @@ public class SearchIndexProjector {
         this.processed = processed;
     }
 
+    /** 至少一次投递语义：同一事件对本消费者只生效一次。 */
     private boolean firstTime(IntegrationEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.firstTime——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.firstTime 尚未实现");
+        return processed.markProcessed(e.eventId(), CONSUMER);
+    }
+
+    private static List<String> safeTags(List<String> tags) {
+        return tags == null ? List.of() : tags;
     }
 
     @EventListener
     @Transactional
     public void on(QuestionPostedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        index.insert(new SearchDocument(e.questionId(), e.courseId(), e.authorId(), e.title(), e.plainText(),
+                safeTags(e.tags()), e.occurredAt()));
     }
 
     @EventListener
     @Transactional
     public void on(QuestionEditedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        index.updateText(e.questionId(), e.title(), e.plainText(), safeTags(e.tags()), e.occurredAt());
     }
 
     @EventListener
     @Transactional
     public void on(AnswerSubmittedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        index.adjustAnswerCount(e.questionId(), 1, e.occurredAt());
     }
 
     @EventListener
     @Transactional
     public void on(ContentDeletedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        if ("QUESTION".equalsIgnoreCase(e.targetType())) {
+            index.markDeleted(e.questionId());
+        } else if ("ANSWER".equalsIgnoreCase(e.targetType())) {
+            index.adjustAnswerCount(e.questionId(), -1, e.occurredAt());
+        }
     }
 
     @EventListener
     @Transactional
     public void on(AnswerAcceptedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        index.markAccepted(e.questionId(), e.occurredAt());
     }
 
     @EventListener
     @Transactional
     public void on(VoteCastEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        // 搜索文档是「问题」级投影：只有直接投给问题的票计入其得分，回答票由 Reputation 计分。
+        // delta = newValue - oldValue，改投与撤销票都能正确回算。
+        if ("QUESTION".equalsIgnoreCase(e.targetType())) {
+            index.adjustScore(e.questionId(), e.newValue() - e.oldValue());
+        }
     }
 
     @EventListener
     @Transactional
     public void on(BountyOpenedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        index.setBountyOpen(e.questionId(), true);
     }
 
     @EventListener
     @Transactional
     public void on(BountyAwardedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        index.setBountyOpen(e.questionId(), false);
     }
 
     @EventListener
     @Transactional
     public void on(BountyClosedEvent e) {
-        // TODO(S3)：实现 SearchIndexProjector.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：SearchIndexProjector.on 尚未实现");
+        if (!firstTime(e)) {
+            return;
+        }
+        index.setBountyOpen(e.questionId(), false);
     }
 }

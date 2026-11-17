@@ -8,6 +8,7 @@ import com.campusoverflow.discovery.domain.search.SearchQuery;
 import com.campusoverflow.identity.api.IdentityApi;
 import com.campusoverflow.identity.api.UserSummary;
 import com.campusoverflow.shared.page.PageResult;
+import com.campusoverflow.shared.security.Role;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class DiscoveryQueryService {
+
+    /** 先多取候选再按 Jaccard 重排：SQL 只按共享标签数粗排，直接截断会漏掉高相似度题目。 */
+    private static final int CANDIDATE_FACTOR = 5;
+    private static final int MAX_CANDIDATES = 100;
 
     private final SearchPort search;
     private final SearchIndex index;
@@ -29,12 +34,44 @@ public class DiscoveryQueryService {
     }
 
     public PageResult<SearchResultView> search(SearchQuery query) {
-        // TODO(S3)：实现 DiscoveryQueryService.search——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：DiscoveryQueryService.search 尚未实现");
+        PageResult<SearchHit> hits = search.search(query);
+        if (hits.items().isEmpty()) {
+            // 不把空列表交给 IdentityApi，避免产生 IN () 之类的空集合查询
+            return PageResult.empty(hits.page(), hits.size());
+        }
+        List<Long> authorIds = hits.items().stream().map(SearchHit::authorId).distinct().toList();
+        Map<Long, UserSummary> authors = identity.findUsers(authorIds);
+        return hits.map(hit -> toView(hit, authors.get(hit.authorId())));
     }
 
     public List<RelatedQuestionView> related(long questionId, int limit) {
-        // TODO(S3)：实现 DiscoveryQueryService.related——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：DiscoveryQueryService.related 尚未实现");
+        if (limit <= 0) {
+            return List.of();
+        }
+        List<String> tags = index.findTags(questionId);
+        if (tags.isEmpty()) {
+            return List.of();
+        }
+        int candidateLimit = (int) Math.min(Math.max((long) limit * CANDIDATE_FACTOR, limit), MAX_CANDIDATES);
+        List<SearchIndex.RelatedCandidate> candidates =
+                index.findCandidatesSharingTags(questionId, tags, candidateLimit);
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        int ownTagCount = tags.size();
+        return RelatedQuestionPolicy.rank(candidates, ownTagCount, limit).stream()
+                .map(c -> new RelatedQuestionView(c.questionId(), c.title(), c.answerCount(), c.accepted(),
+                        RelatedQuestionPolicy.jaccard(c.sharedTags(), ownTagCount, c.tagCount())))
+                .toList();
+    }
+
+    private static SearchResultView toView(SearchHit hit, UserSummary author) {
+        SearchResultView.Author view = new SearchResultView.Author(
+                hit.authorId(),
+                author == null ? "已注销用户" : author.displayName(),
+                author == null ? Role.STUDENT.name() : author.role().name(),
+                author != null && author.verified());
+        return new SearchResultView(hit.questionId(), hit.title(), hit.snippet(), hit.tags(), hit.courseId(),
+                view, hit.score(), hit.answerCount(), hit.accepted(), hit.bountyOpen(), hit.createdAt());
     }
 }

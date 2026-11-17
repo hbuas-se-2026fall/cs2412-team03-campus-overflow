@@ -3,12 +3,16 @@ package com.campusoverflow.qa.application.fake;
 import com.campusoverflow.identity.api.CourseSummary;
 import com.campusoverflow.identity.api.IdentityApi;
 import com.campusoverflow.identity.api.UserSummary;
+import com.campusoverflow.qa.application.port.ContentRenderer;
 import com.campusoverflow.qa.application.port.QuestionListCache;
 import com.campusoverflow.qa.application.query.QuestionSummaryView;
 import com.campusoverflow.qa.domain.Answer;
 import com.campusoverflow.qa.domain.AnswerRepository;
+import com.campusoverflow.qa.domain.Comment;
+import com.campusoverflow.qa.domain.CommentRepository;
 import com.campusoverflow.qa.domain.Question;
 import com.campusoverflow.qa.domain.QuestionRepository;
+import com.campusoverflow.qa.domain.TagRepository;
 import com.campusoverflow.qa.domain.TargetType;
 import com.campusoverflow.qa.domain.Vote;
 import com.campusoverflow.qa.domain.VoteRepository;
@@ -94,6 +98,7 @@ public final class QaTestFixtures {
     }
 
     public static class InMemoryVotes implements VoteRepository {
+
         private final Map<String, Vote> store = new LinkedHashMap<>();
         private final AtomicLong sequence = new AtomicLong();
 
@@ -121,8 +126,28 @@ public final class QaTestFixtures {
         }
     }
 
+    public static class InMemoryComments implements CommentRepository {
+        private final Map<Long, Comment> store = new LinkedHashMap<>();
+        private final AtomicLong sequence = new AtomicLong();
+
+        @Override
+        public Optional<Comment> findById(long id) {
+            return Optional.ofNullable(store.get(id));
+        }
+
+        @Override
+        public Comment save(Comment comment) {
+            if (comment.id() == null) {
+                comment.assignId(sequence.incrementAndGet());
+            }
+            store.put(comment.id(), comment);
+            return comment;
+        }
+    }
+
     /** 记录所有已发布事件，便于断言“领域动作 → 集成事件”的契约。 */
     public static class RecordingEvents implements IntegrationEventPublisher {
+
         public final List<IntegrationEvent> published = new ArrayList<>();
 
         @Override
@@ -201,6 +226,30 @@ public final class QaTestFixtures {
         @Override
         public void record(String action, Long actorId, String targetType, String targetId, String detail) {
             actions.add(action);
+        }
+    }
+
+    /** 标签使用计数替身：按标签名累计增量，便于断言 +1 / -1 是否成对出现。 */
+    public static class RecordingTags implements TagRepository {
+        public final Map<String, Integer> usages = new LinkedHashMap<>();
+
+        @Override
+        public void adjustUsage(Collection<String> tagNames, int delta) {
+            tagNames.forEach(name -> usages.merge(name, delta, Integer::sum));
+        }
+    }
+
+    /** 渲染端口替身：净化逻辑属于基础设施层，应用层测试只关心“纯文本摘要是否按上限截断”。 */
+    public static class StubRenderer implements ContentRenderer {
+
+        @Override
+        public String toSafeHtml(String markdown) {
+            return markdown;
+        }
+
+        @Override
+        public String toPlainText(String markdown, int maxLength) {
+            return markdown.length() <= maxLength ? markdown : markdown.substring(0, maxLength);
         }
     }
 }

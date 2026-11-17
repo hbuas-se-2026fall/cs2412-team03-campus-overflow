@@ -1,0 +1,105 @@
+# Lab7 / #34：Testcontainers 集成测试必须在带 Docker 的 runner 上真实运行。
+#
+# 分层验收，避免用一个「大而全」的用例把两个不同阶段的规格混在一起：
+#   1) lab7-acceptance：#34 的三条验收标准（真实 MySQL 容器 / DB 数据正确 / 不依赖本地环境）
+#      由 QuestionPersistenceIT 覆盖，是阻断性门禁，PR 上必须绿。
+#   2) s3-end-to-end：CampusOverflowFlowIT 覆盖「采纳 → 声誉 → 搜索 → 通知」完整链路，
+#      目前依赖的 S3 业务实现仍是 TODO 骨架（ReputationQueryService.profile /
+#      DiscoveryQueryService.search / NotificationService.list / BadgeService.grant 等）。
+#      该作业不在 PR 上伪装通过：只在手动触发或 develop/main 推送时运行，且不加
+#      continue-on-error，红了就是红了，日志与报告原样归档。
+name: Testcontainers 集成测试 (Lab7)
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: it-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab7-acceptance:
+    name: '#34 验收 / 真实 MySQL 落库'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 配置 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: 确认 runner 提供 Docker 守护进程
+        run: docker version --format 'Docker Server {{.Server.Version}}'
+
+      - name: 安装上游模块（不跑测试）
+        run: mvn -B -f backend/pom.xml install -DskipTests -Djacoco.skip=true
+
+      - name: 运行 #34 验收用例
+        run: |
+          mvn -B -f backend/pom.xml verify -pl co-bootstrap \
+            -Dit.test=QuestionPersistenceIT \
+            -Dfailsafe.failIfNoSpecifiedTests=false \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -Djacoco.skip=true
+
+      - name: 校验确实生成了 failsafe 报告
+        if: always()
+        run: |
+          f=backend/co-bootstrap/target/failsafe-reports/TEST-com.campusoverflow.QuestionPersistenceIT.xml
+          if [ ! -s "$f" ]; then
+            echo "::error::未生成 QuestionPersistenceIT 报告，集成测试没有真正执行"
+            exit 1
+          fi
+          grep -E 'testsuite name=|tests="' "$f" | head -2
+
+      - name: 归档验收报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab7-acceptance-reports
+          path: backend/co-bootstrap/target/failsafe-reports/**
+
+  s3-end-to-end:
+    name: 'S3 规格 / 完整业务链路（如实标红）'
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 配置 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: 安装上游模块（不跑测试）
+        run: mvn -B -f backend/pom.xml install -DskipTests -Djacoco.skip=true
+
+      - name: 运行完整端到端链路
+        # 不加 continue-on-error：S3 骨架未补齐时这里就应该红，日志即证据
+        run: |
+          mvn -B -f backend/pom.xml verify -pl co-bootstrap \
+            -Dit.test=CampusOverflowFlowIT \
+            -Dfailsafe.failIfNoSpecifiedTests=false \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -Djacoco.skip=true
+
+      - name: 归档端到端报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s3-end-to-end-reports
+          path: backend/co-bootstrap/target/failsafe-reports/**

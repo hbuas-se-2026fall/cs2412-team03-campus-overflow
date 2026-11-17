@@ -11,6 +11,13 @@
     <artifactId>co-reputation-application</artifactId>
     <packaging>jar</packaging>
     <name>Reputation 声誉与激励 :: application（用例编排）</name>
+    <properties>
+        <!-- Issue #97 曾把本模块显式排除在全局 0.70 门禁之外（当时 65/248 行 = 26.2%），
+             解除条件写的是「#34 / S3 链路补齐测试后删除本属性」。
+             现在已用应用层单元测试补齐（手写替身，覆盖开户/记账/徽章/悬赏/查询/排行榜/对账），
+             因此删除 jacoco.check.skip，让本模块回到与其余 26 个模块一致的统一下限。
+             这些测试只依赖端口接口，不需要 Spring 容器、数据库或 Redis。 -->
+    </properties>
     <dependencies>
         <dependency>
             <groupId>com.campusoverflow</groupId>

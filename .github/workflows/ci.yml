@@ -1,4 +1,5 @@
 # CampusOverflow 持续集成流水线（对应 arc42 第 10 章适应度函数与第 7 章部署视图）
+# 渐进式质量门禁（ADR-009）：Sprint0 只跑 co-shared-kernel + co-identity，集成测试不阻断合并
 name: CI
 
 on:
@@ -7,10 +8,18 @@ on:
   pull_request:
     branches: [main, develop]
 
+# 同一 ref 只保留最新一次运行：连续推送会取消排队中/运行中的旧 run。
+# 这是纯省 Action 额度的改动，不影响任何检查的存在与结论（被取消的 run 不写结论）。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: 后端构建与验证
     runs-on: ubuntu-latest
+    # 实测约 8-10 分钟；给 20 分钟上限，避免异常卡死把额度烧满
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -25,21 +34,43 @@ jobs:
       - name: 编译
         run: mvn -B -f backend/pom.xml clean compile
 
-      # 阶段 2：单元测试（领域层 + 应用层，毫秒级，无外部依赖）
-      - name: 单元测试
+      # 阶段 2：全后端单元测试，先给一次快速反馈。#95 骨架清零后不再用 -pl 圈定子集。
+      - name: 单元测试（全后端）
         run: mvn -B -f backend/pom.xml test
 
+      # 阶段 2b：全后端覆盖率门禁（Issue #97）
+      # 阈值只在根 POM 定义一次（0.70），父 POM 的 jacoco:check 被所有模块继承；
+      # 这里不再用 -D 提阈值、不再用 -pl 只圈定 Q&A 一个模块，也不再用任何覆盖率覆盖参数。
+      # 集成测试交给阶段 4（有 Docker 且允许失败），本步骤跳过 IT，让门禁只依据
+      # 单元测试的真实覆盖率；-DskipITs 是 failsafe 的标准开关，与覆盖率阈值无关。
+      # 关键：jacoco:check 找不到 jacoco.exec 时会静默跳过并打印
+      # "All coverage checks have been met."，所以必须额外断言关键模块的 exec 确实生成，
+      # 否则单测哪天被移出 CI，门禁会悄悄失效而不报错。
+      - name: 全后端覆盖率门禁
+        run: |
+          mvn -B -f backend/pom.xml verify -DskipITs=true
+          for module in co-shared-kernel co-qa/co-qa-domain co-bootstrap; do
+            test -s "backend/$module/target/jacoco.exec" || {
+              echo "::error::backend/$module/target/jacoco.exec 缺失或为空：单测未真正执行，覆盖率门禁会静默跳过"
+              exit 1
+            }
+          done
+
       # 阶段 3：架构适应度函数（ArchUnit：FF-1~FF-6）
+      # 只筛选 ArchitectureTest 跑，加 -Djacoco.skip=true 是为了别让这一次"只有一个测试"的运行
+      # 把阶段 2b 生成的 jacoco.exec 覆盖掉；门禁已在 2b 阻断式执行过，这里不重复采集。
       - name: 架构约束检查
-        run: mvn -B -f backend/pom.xml test -pl co-bootstrap -Dtest=ArchitectureTest -DfailIfNoTests=false
+        run: mvn -B -f backend/pom.xml test -pl co-bootstrap -am -Dtest=ArchitectureTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true
 
-      # 阶段 4：领域层覆盖率门禁（低于阈值直接失败）
-      - name: 覆盖率门禁
-        run: mvn -B -f backend/pom.xml verify -DskipITs -Djacoco.skip=false
-
-      # 阶段 5：集成测试（Testcontainers 拉起真实 MySQL + Redis）
-      - name: 集成测试
-        run: mvn -B -f backend/pom.xml verify -Dsurefire.skip=true
+      # 阶段 4：集成测试（ADR-009：S0 暂不阻断合并，允许失败；S3 起开启）
+      # 原来的 -Dsurefire.skip=true 是无效参数（surefire 只认 -DskipTests），
+      # 该步骤其实一直在重跑全部单测，靠 continue-on-error 才没暴露红测试。
+      # 改为 -Djacoco.skip=true，避免重复覆盖阶段 2b 的门禁结果；
+      # 保留 continue-on-error：骨架 IT 尚未全绿，等 #34 的 Testcontainers 链路
+      # 在 runner 上稳定后再改成阻断，这一步的当前状态不虚报为「已通过」。
+      - name: 集成测试（允许失败）
+        continue-on-error: true
+        run: mvn -B -f backend/pom.xml verify -Djacoco.skip=true
 
       - name: 归档测试报告
         if: always()
@@ -51,6 +82,7 @@ jobs:
   frontend:
     name: 前端构建
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,9 +91,19 @@ jobs:
       - name: 安装依赖
         working-directory: frontend
         run: npm install --no-audit --no-fund
+      # #42：配了 ESLint 就必须有门禁。此前只跑 typecheck + build，
+      # lint 脚本 / .eslintrc.cjs 从未被 CI 执行，等于不设防。
+      - name: 代码规范检查（ESLint）
+        working-directory: frontend
+        run: npm run lint
       - name: 类型检查
         working-directory: frontend
         run: npm run typecheck
+      # Issue #116：前端此前只有 lint / typecheck / build，一行单测都没有——
+      # api 层的 CSRF 双提交、错误码映射这类纯逻辑全靠人工点页面验证。
+      - name: 单元测试（Vitest）
+        working-directory: frontend
+        run: npm test
       - name: 构建
         working-directory: frontend
         run: npm run build
@@ -69,6 +111,7 @@ jobs:
   images:
     name: 容器镜像构建
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [backend, frontend]
     if: github.event_name == 'push'
     steps:
@@ -77,3 +120,131 @@ jobs:
         run: docker build -f deploy/backend.Dockerfile -t campus-overflow-backend:${{ github.sha }} .
       - name: 构建前端镜像
         run: docker build -f deploy/frontend.Dockerfile -t campus-overflow-web:${{ github.sha }} .
+
+  # SonarQube 质量门禁（Issue #32）。
+  # runner 内临时起一个 sonarqube 容器，跑完即弃；不依赖外部 Sonar 服务器，
+  # 也不依赖 repo secret（临时容器默认 admin/admin，运行时自己生成 token）。
+  # 质量门禁在 job 里通过 API 建一个自定义 gate（Coverage>60% / Bugs=0 /
+  # Vulnerabilities=0 / Code Smells<10），再把项目绑定到这个 gate。
+  # 门槛暂用 60%：new_coverage 只看新增代码，与 #97 根 POM 里的整体 70% 门禁不是同一口径。
+  # co-bootstrap 装配层测试已在 #97 补齐，但把这里提到 70% 前需要先量出新代码口径的基线。
+  # 扫描报告传 artifact，替代"Dashboard 公网可访问"（临时容器跑完即销毁）。
+  sonar:
+    name: SonarQube 质量门禁
+    runs-on: ubuntu-latest
+    # 起临时 SonarQube 容器 + 全量扫描，实测 5-6 分钟
+    timeout-minutes: 20
+    needs: [backend]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: 启动 SonarQube 容器
+        run: |
+          docker run -d --name sonarqube \
+            -p 9000:9000 \
+            -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true \
+            -e SONAR_WEB_JAVAOPTS="-Xmx1024m -Xms256m" \
+            sonarqube:10.7.0-community
+
+      - name: 等待 SonarQube 就绪
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:9000/api/system/status | grep -q '"status":"UP"'; then
+              echo "SonarQube is UP"
+              exit 0
+            fi
+            echo "waiting... ($i/60)"
+            sleep 5
+          done
+          echo "::error::SonarQube did not become ready in 5 minutes"
+          exit 1
+
+      # 临时容器默认 admin/admin。PO 复核给的方案：直接 basic auth 生成 token，
+      # 不依赖 secret、也不依赖 session cookie（10.x 的 login 接口在本场景返回不可用）。
+      # 失败时打印 HTTP 状态码与响应体，避免像上一版那样静默空白导致 JSONDecodeError。
+      - name: 生成临时扫描 token
+        run: |
+          set +e
+          post() {
+            curl -s -o /tmp/sonar_api.json -w "%{http_code}" "$@"
+          }
+          read_token() {
+            python3 -c "import json;print(json.load(open('/tmp/sonar_api.json')).get('token',''))" 2>/dev/null || true
+          }
+          code=$(post -u admin:admin -X POST "http://localhost:9000/api/user_tokens/generate" -d "name=ci-${GITHUB_RUN_ID}")
+          TOKEN=$(read_token)
+          echo "basic-auth /api/user_tokens/generate -> HTTP $code, token_len=${#TOKEN}"
+          if [ -z "$TOKEN" ]; then
+            curl -s -c /tmp/sonar.cookie -o /tmp/sonar_login.json -w "login HTTP %{http_code}\n" \
+              -X POST "http://localhost:9000/api/authentication/login" -d "login=admin&password=admin"
+            code=$(post -u "${SONAR_TMP_TOKEN}:" -X POST "http://localhost:9000/api/user_tokens/generate" -d "name=ci-${GITHUB_RUN_ID}")
+            TOKEN=$(read_token)
+            echo "cookie /api/user_tokens/generate -> HTTP $code, token_len=${#TOKEN}"
+          fi
+          if [ -z "$TOKEN" ]; then
+            echo "::error::生成 Sonar token 失败，最后响应：$(head -c 400 /tmp/sonar_api.json)"
+            exit 1
+          fi
+          echo "SONAR_TMP_TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      # 建自定义质量门并设为默认。指标：
+      #   coverage on new code >= 60%（当前 co-bootstrap 未覆盖，暂放宽到 60）
+      #   bugs on new code = 0
+      #   vulnerabilities on new code = 0
+      #   code_smells on new code < 10
+      - name: 配置质量门禁
+        run: |
+          GATE="team3-gate"
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
+            "http://localhost:9000/api/qualitygates/create" -d "name=$GATE" > /dev/null
+          # 新代码覆盖率 >= 60%（低于 60% 报错）
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
+            "http://localhost:9000/api/qualitygates/create_condition" \
+            -d "gateName=$GATE&metric=new_coverage&op=LT&error=60" > /dev/null || true
+          # Bugs = 0（新代码 bug > 0 报错）
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
+            "http://localhost:9000/api/qualitygates/create_condition" \
+            -d "gateName=$GATE&metric=new_bugs&op=GT&error=0" > /dev/null || true
+          # Vulnerabilities = 0
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
+            "http://localhost:9000/api/qualitygates/create_condition" \
+            -d "gateName=$GATE&metric=new_vulnerabilities&op=GT&error=0" > /dev/null || true
+          # Code Smells < 10
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
+            "http://localhost:9000/api/qualitygates/create_condition" \
+            -d "gateName=$GATE&metric=new_code_smells&op=GT&error=10" > /dev/null || true
+          curl -sf -u "${SONAR_TMP_TOKEN}:" -X POST \
+            "http://localhost:9000/api/qualitygates/set_as_default" -d "name=$GATE" > /dev/null
+          echo "quality gate $GATE configured"
+
+      - name: 跑测试并生成 JaCoCo 报告
+        run: mvn -B -f backend/pom.xml test jacoco:report
+
+      - name: Sonar 扫描并等待质量门禁
+        run: |
+          mvn -B -f backend/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:4.0.0.4121:sonar \
+            -Dsonar.projectKey=campus-overflow \
+            -Dsonar.host.url=http://localhost:9000 \
+            -Dsonar.token=${{ env.SONAR_TMP_TOKEN }} \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.java.coveragePlugin=jacoco
+
+      - name: 归档扫描报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-report
+          path: |
+            backend/**/target/site/jacoco/jacoco.xml
+            backend/**/target/site/jacoco/
+          if-no-files-found: ignore

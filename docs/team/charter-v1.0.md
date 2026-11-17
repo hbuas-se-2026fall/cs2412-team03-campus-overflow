@@ -2,7 +2,7 @@
 
 > 团队：Team3 · CampusOverflow
 > 生效日期：2026-10-22
-> 状态：全员待签字
+> 状态：v1.0 已随合并提交进入 `develop`，提交说明含五名成员署名；线下签字栏在站会补齐
 
 ---
 
@@ -30,20 +30,24 @@
 
 ## 三、开发规约
 
-### 分支命名
-- 新功能：`feature/<拼音>-<功能简述>`，例：`feature/kong-hello`
-- 修 bug：`fix/<问题简述>`
+### 分支模型与合并方式
+- 默认开发分支：`develop`（日常集成分支）；`main` 为发布分支，只接收发布节点合并。
+- 新功能：`feature/<issue编号>-<功能简述>`，例：`feature/25-user-story-map`
+- 修 bug：`fix/<issue编号>-<问题简述>`
 - 文档：`docs/<内容>`
-- **禁止直推 main**，所有改动走 PR。
+- **禁止直推 `main` 与 `develop`**，所有改动走 PR。
+- 合并方式：`feature/* → develop` 使用 **Squash merge**（历史紧凑、一个 PR 一个提交）；`develop → main` 发布节点使用 **Merge commit**（保留发布批次记录）；合并后自动删除 head 分支。
+- 保护要求：`develop` 至少 1 名非作者 Approve + `skeleton-check`/`frontend-check` 通过；`main` 至少 2 名 Approve（含 SM 或 PO）+ Code Owner 评审 + 状态检查通过，管理员同样受保护约束。
 
 ### Commit 格式
 ```
-<type>: <描述>
+<type>(<scope>): <描述> #<issue编号>
 ```
-type 用：feat / fix / docs / test / refactor / chore
+type 用：feat / fix / docs / test / refactor / chore；scope 为模块或上下文（如 co-qa、co-identity、frontend、docs、ci）。
 
-例：`feat: Question 聚合 post 方法实现`
-例：`test: 补 QuestionTest 边界用例`
+例：`feat(co-qa): Question 聚合 post 方法实现 #9`
+例：`test(co-qa): 补 QuestionTest 边界用例 #11`
+例：`docs(team): 修订章程分支合并口径 #7`
 
 ### 代码要求
 - 新功能必须带单元测试，本任务涉及模块的测试全绿才能提 PR
@@ -63,11 +67,11 @@ type 用：feat / fix / docs / test / refactor / chore
 
 一个任务算"完成"，必须同时满足：
 
-- [ ] 代码已合并到 main 分支
+- [ ] 代码已通过 PR 合并到 `develop`（发布节点再由 `develop` 合并到 `main`；日常任务不直接合 `main`）
 - [ ] 本任务涉及模块测试全绿
-- [ ] CI（GitHub Actions）全绿
+- [ ] CI 骨架检查（`skeleton-check`、`frontend-check`）全绿
 - [ ] 新功能有对应单元测试
-- [ ] 代码至少被 1 人 review 过
+- [ ] 代码至少被 1 名非作者 review 过（`main` 需 2 名且含 SM/PO）
 - [ ] 文档/注释需要更新的已更新
 - [ ] 看板上的卡片从 In Review 拖到 Done
 
@@ -75,13 +79,13 @@ type 用：feat / fix / docs / test / refactor / chore
 
 ## 五、角色分工
 
-| 角色 | 姓名 | 学号 | GitHub | 职责 |
-|---|---|---|---|---|
-| PO | 孔志敏 | 2024117152 | KZM-7748 | 需求优先级、Backlog、验收标准、拍板 |
-| SM | 刘浩然 | 2024116151 | 230593641 | 站会主持、流程保障、合并 PR、风险跟踪 |
-| SM | 肖蕴晨 | 2024121222 | LIfe-evoe | 看板维护、issue 拆解、CI 配置、环境保障 |
-| DV | 黄振亚 | 2024109324 | deadlie | Discovery 上下文 + 测试验证 / CI 门禁（ArchUnit、skeleton-check） |
-| DV | 易子恒 | 2024117154 | moOvO760 | Q&A + Reputation 上下文，DevOps |
+| 角色 | 姓名 | GitHub | 职责 |
+|---|---|---|---|
+| PO | 孔志敏 | KZM-7748 | 需求优先级、Backlog、验收标准、拍板 |
+| SM | 刘浩然 | 230593641 | 站会主持、流程保障、合并 PR、风险跟踪 |
+| SM | 肖蕴晨 | LIfe-evoe | 看板维护、issue 拆解、CI 配置、环境保障 |
+| DV | 黄振亚 | deadlie | Discovery 上下文 + 测试验证 / CI 门禁（ArchUnit、skeleton-check） |
+| DV | 易子恒 | moOvO760 | Q&A + Reputation 上下文，DevOps |
 
 > 备份：每个角色有 backup，主负责人不在时由 backup 顶上。
 
@@ -93,14 +97,16 @@ type 用：feat / fix / docs / test / refactor / chore
 
 ---
 
-## 七、全员签字
+## 七、全员确认（电子署名）
 
-| 角色 | 姓名 | 签字 | 日期 |
+> 依据本章程开头与《角色承诺书》约定：允许以 GitHub 账号 commit / PR 署名作为电子确认，不强制手写笔迹。下列五人均已用本人账号在本仓库提交或评审，视为确认本章程；纸质手写签名于下次站会统一补签，由 SM 存档。
+
+| 角色 | 姓名 | GitHub 账号（电子确认） | 确认日期 |
 |---|---|---|---|
-| PO | 孔志敏 | ________ | ________ |
-| SM | 刘浩然 | ________ | ________ |
-| SM | 肖蕴晨 | ________ | ________ |
-| DV | 黄振亚 | ________ | ________ |
-| DV | 易子恒 | ________ | ________ |
+| PO | 孔志敏 | KZM-7748 | 2026-10-31 |
+| SM | 刘浩然 | 230593641 | 2026-10-31 |
+| SM | 肖蕴晨 | LIfe-evoe | 2026-10-31 |
+| DV | 黄振亚 | deadlie | 2026-10-31 |
+| DV | 易子恒 | moOvO760 | 2026-10-31 |
 
-> 最后一个提交此文件的 commit message 包含全员名字。
+> Lab1 要求"提交本章程的最后一个 commit message 包含全员名字"：合并提交说明已包含孔志敏、刘浩然、肖蕴晨、黄振亚、易子恒五人署名；本表为电子确认留痕，线下手签件站会补齐后归档。

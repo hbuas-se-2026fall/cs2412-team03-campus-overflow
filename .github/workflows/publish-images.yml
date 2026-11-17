@@ -1,0 +1,150 @@
+# Lab8 / Issue #35 #36 #38：镜像构建与发布
+#
+# 补上此前断掉的一环：deploy.yml 部署时执行 `docker compose pull`，
+# 但仓库里没有任何地方把镜像推到 registry，目标主机必然拉不到。
+# 这里用仓库自带的 GHCR + GITHUB_TOKEN，不新增长期凭据，也不引入第三方 Action。
+#
+# 触发策略（刻意区分 PR 与 push）：
+#   - pull_request：只 build、不 push，让两个 Dockerfile 在带 Docker 的 runner 上
+#     真跑一次，作为 #35 / #36 的实机构建证据，同时不污染 registry；
+#   - push 到 develop / main：build 后推送，tag 为完整 commit SHA；
+#   - workflow_dispatch：可指定 tag 手工补发某个版本。
+#
+# 镜像命名与 .env.example、deploy.yml 保持一致：
+#   ghcr.io/<owner>/<repo>-backend:<tag>
+#   ghcr.io/<owner>/<repo>-web:<tag>
+
+name: Publish Images (Lab8)
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'deploy/backend.Dockerfile'
+      - 'deploy/frontend.Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/publish-images.yml'
+  push:
+    branches: [develop, main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'deploy/backend.Dockerfile'
+      - 'deploy/frontend.Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/publish-images.yml'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "镜像 tag（留空用当前 commit SHA）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: 镜像构建与发布
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析镜像地址
+        id: meta
+        run: |
+          # GHCR 要求仓库命名空间全小写；GITHUB_REPOSITORY 形如 owner/repo
+          repo_lc="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          tag="${{ inputs.image_tag }}"
+          if [ -z "$tag" ]; then tag="$GITHUB_SHA"; fi
+          echo "backend=ghcr.io/${repo_lc}-backend:${tag}" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/${repo_lc}-web:${tag}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "本次镜像 tag：${tag}"
+
+      # 两个 Dockerfile 的 build context 都是仓库根，且依赖 .dockerignore 排除
+      # .git / target / node_modules / .env。PR 上跑这一步即 #35 #36 的实机构建验证。
+      - name: 构建后端镜像
+        run: docker build -f deploy/backend.Dockerfile -t "${{ steps.meta.outputs.backend }}" .
+
+      - name: 构建前端镜像
+        run: docker build -f deploy/frontend.Dockerfile -t "${{ steps.meta.outputs.web }}" .
+
+      - name: PR 仅校验构建，不推送
+        if: github.event_name == 'pull_request'
+        env:
+          BACKEND_IMAGE: ${{ steps.meta.outputs.backend }}
+          WEB_IMAGE: ${{ steps.meta.outputs.web }}
+        run: |
+          echo "::notice title=镜像构建校验通过::PR 只验证 Dockerfile 可构建，不推送到 GHCR"
+          docker image ls --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep 'campus-overflow' || true
+
+          # #35：非 root 与运行时 JRE 可以在不连数据库的前提下冒烟验证
+          uid="$(docker run --rm --entrypoint sh "$BACKEND_IMAGE" -c 'id -u')"
+          echo "后端镜像运行用户 uid=$uid"
+          [ "$uid" != "0" ] || { echo "::error::后端镜像仍以 root 运行，不符合 #35"; exit 1; }
+          docker run --rm --entrypoint sh "$BACKEND_IMAGE" -c 'java -version'
+
+          # #35：镜像里必须真的有可执行 jar。之前用 --entrypoint sh 覆盖了
+          # ENTRYPOINT，jar 名不匹配时 build 成功、uid/java 冒烟也全绿，
+          # 直到 compose 真启动才报 Unable to access jarfile app.jar。
+          docker run --rm --entrypoint sh "$BACKEND_IMAGE" \
+            -c 'test -s /app/app.jar && ls -l /app/app.jar' \
+            || { echo "::error::镜像内缺少 /app/app.jar，容器无法启动"; exit 1; }
+
+          # #36：nginx 反代配置语法校验。
+          # nginx -t 会在检查阶段解析 proxy_pass 里的静态主机名，而 `backend` 是
+          # compose 服务名，独立 docker run 的容器里没有该 DNS。这里只补 hosts 映射
+          # 让语法检查能跑完，不改生产配置（compose 网络里 backend 本来就可解析）。
+          docker run --rm --add-host backend:127.0.0.1 --entrypoint sh "$WEB_IMAGE" -c 'nginx -t'
+
+          # #35 验收要求镜像 <200MB；用真实体积给结论，不估算、也不静默放过。
+          # 2026-11-05：改用 jlink 定制 JRE 后已达标，因此把原来的 ::warning::
+          # 升级为硬断言——体积回退就直接让 PR 变红，不再「超了也只警告」。
+          size_mb="$(docker image inspect "$BACKEND_IMAGE" --format '{{.Size}}' | awk '{printf "%.0f", $1/1024/1024}')"
+          echo "后端镜像实测 ${size_mb}MB（门槛 <200MB）"
+          if [ "$size_mb" -ge 200 ]; then
+            echo "::error title=#35 镜像体积回退::后端镜像 ${size_mb}MB ≥ 200MB，检查 deploy/backend.Dockerfile 的 jlink 阶段是否被改回完整 JRE"
+            exit 1
+          fi
+          echo "✅ 后端镜像 ${size_mb}MB，满足 #35 的 <200MB"
+
+      - name: 登录 GHCR
+        if: github.event_name != 'pull_request'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+      - name: 推送镜像
+        if: github.event_name != 'pull_request'
+        env:
+          BACKEND_IMAGE: ${{ steps.meta.outputs.backend }}
+          WEB_IMAGE: ${{ steps.meta.outputs.web }}
+        run: |
+          docker push "$BACKEND_IMAGE"
+          docker push "$WEB_IMAGE"
+
+      - name: 输出镜像清单
+        if: always()
+        env:
+          BACKEND_IMAGE: ${{ steps.meta.outputs.backend }}
+          WEB_IMAGE: ${{ steps.meta.outputs.web }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          {
+            echo "### 镜像构建结果"
+            echo ""
+            echo "| 镜像 | 事件 | 是否推送 |"
+            echo "| --- | --- | --- |"
+            echo "| \`$BACKEND_IMAGE\` | $EVENT | $([ "$EVENT" = "pull_request" ] && echo 否 || echo 是) |"
+            echo "| \`$WEB_IMAGE\` | $EVENT | $([ "$EVENT" = "pull_request" ] && echo 否 || echo 是) |"
+          } >> "$GITHUB_STEP_SUMMARY"

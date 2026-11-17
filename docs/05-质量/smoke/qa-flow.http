@@ -1,0 +1,198 @@
+### CampusOverflow 业务链路冒烟脚本
+# 工具：VS Code 装 "REST Client" 扩展，或 IntelliJ IDEA 自带 HTTP Client。
+#
+# 与同目录的 auth.http 分工：
+#   auth.http    → 认证链路（注册 / 登录 / 登出 / 错误密码 / CSRF）
+#   qa-flow.http → 业务链路（课程 → 提问 → 回答 → 投票 → 采纳 → 声誉 → 搜索 → 通知）
+#
+# 前置：后端用 dev + demo profile 起在本机，demo 会灌入 1 门课与若干问题：
+#   mvn spring-boot:run -pl co-bootstrap -Dspring-boot.run.profiles=dev,demo
+#
+# 账号来自 DemoDataSeeder，统一密码 Campus2026。
+# 按顺序从上往下逐个 Send Request，cookie jar 在同文件内自动共享。
+# courseId 从第 4 步的课程列表里取真实值后改这里。
+
+@baseUrl = http://localhost:8080
+@api = {{baseUrl}}/api/v1
+@student = 2023001
+@pwd = Campus2026
+@courseId = 1
+
+
+### 1. 健康检查：期望 200，body {"status":"UP"}
+GET {{baseUrl}}/actuator/health
+
+
+### 2. 取 CSRF Token：期望 200
+# 同时服务端种下 XSRF-TOKEN cookie，后续非 GET 请求必须在 header 和 cookie 两处都带回。
+# @name csrf
+GET {{api}}/auth/csrf
+
+> {%
+    client.global.set("xsrfToken", response.body.token);
+%}
+
+
+### 3. 登录（提问者）：期望 200，返回 MeView
+# @name login
+POST {{api}}/auth/login
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "username": "{{student}}",
+  "password": "{{pwd}}"
+}
+
+> {%
+    client.global.set("userId", response.body.id);
+%}
+
+
+### 4. 课程列表：期望 200，demo profile 下至少 1 门课
+# 把感兴趣的课程 ID 填回文件顶部 @courseId
+GET {{api}}/courses
+
+
+### 5. 我的课程：期望 200
+GET {{api}}/courses/mine
+
+
+### 6. 加入课程：期望 200/201/409
+# 409 = 已是成员，属正常。
+POST {{api}}/courses/{{courseId}}/join
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+
+### 7. 提问：期望 201，返回含问题 ID
+# title 最长 150，body 最长 30000，tags 1–5 个且不可重复。
+# @name postQuestion
+POST {{api}}/questions
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "courseId": {{courseId}},
+  "title": "冒烟：跳表的查找为什么是 O(log n)",
+  "body": "想确认一下这个结论的推导过程，以及最坏情况的边界。",
+  "tags": ["数据结构", "算法"]
+}
+
+> {%
+    client.global.set("questionId", response.body.id);
+%}
+
+
+### 8. 问题列表（按课程过滤）：期望 200，分页结构
+GET {{api}}/questions?courseId={{courseId}}&page=1&size=20
+
+
+### 9. 问题详情：期望 200
+GET {{api}}/questions/{{questionId}}
+
+
+### 10. 回答：期望 201，返回回答 ID
+# @name postAnswer
+POST {{api}}/questions/{{questionId}}/answers
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "body": "每一层索引把候选区间折半，层数是 log2(n)，每层内部操作是常数，所以整体 O(log n)。"
+}
+
+> {%
+    client.global.set("answerId", response.body.id);
+%}
+
+
+### 11. 给自己的回答投票（+1）：期望 422，验证自投被拒绝
+# targetType 取 QUESTION 或 ANSWER；value 取 1 / -1 / 0（0 表示撤销）。
+# 当前单账号流程里 2023001 同时是提问者与回答者，实际返回 422 QA-1015「不能给自己的内容投票」；
+# 这是领域规则的正确行为。若改用另一个账号回答，此步应期望 200。
+PUT {{api}}/votes
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "targetType": "ANSWER",
+  "targetId": {{answerId}},
+  "value": 1
+}
+
+
+### 12. 给自己的回答改投（-1）：期望 422，仍拒绝自投
+PUT {{api}}/votes
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "targetType": "ANSWER",
+  "targetId": {{answerId}},
+  "value": -1
+}
+
+
+### 13. 采纳最佳答案：期望 204
+# 实际返回 204（成功，无响应体）。
+# 采纳后异步触发：声誉账本 +15 → 徽章判定 → 悬赏结算 → 通知投影。
+# 采纳者是提问者本人，符合规则。
+PUT {{api}}/questions/{{questionId}}/accepted-answer
+Content-Type: application/json
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+{
+  "answerId": {{answerId}}
+}
+
+
+### 14. 我的声誉档案：期望 200
+# 本人可见悬赏积分字段；查看他人时该字段为 null。
+GET {{api}}/users/{{userId}}/reputation
+
+
+### 15. 我的声誉流水：期望 200
+# 应能看到第 13 步采纳产生的 +15 记录。
+GET {{api}}/users/{{userId}}/reputation/ledger
+
+
+### 16. 排行榜：期望 200，只含正分且名次连续
+# period 取 week / month / term / all，默认 week；limit 上限 100。
+GET {{api}}/leaderboard?period=week&limit=10
+
+
+### 17. 中文全文检索：期望 200
+# 验证中文分词，搜「跳表」应命中第 7 步发布的问题。
+GET {{api}}/search/questions?q=跳表
+
+
+### 18. 相关问题推荐：期望 200
+GET {{api}}/questions/{{questionId}}/related?limit=5
+
+
+### 19. 通知中心：期望 200
+# 第 13 步采纳后，回答者应收到一条通知；当前登录者是提问者，通知数为 0 属正常。
+GET {{api}}/notifications?page=1&size=20
+
+
+### 20. 未读数：期望 200，{"count":0}
+GET {{api}}/notifications/unread-count
+
+
+### 21. 登出：期望 204
+POST {{api}}/auth/logout
+X-XSRF-TOKEN: {{xsrfToken}}
+Cookie: XSRF-TOKEN={{xsrfToken}}
+
+
+### 22. 登出后再查 /me：期望 401
+GET {{api}}/auth/me
+
+### 验收：易子恒 2026-11-16 22 步全部符合预期

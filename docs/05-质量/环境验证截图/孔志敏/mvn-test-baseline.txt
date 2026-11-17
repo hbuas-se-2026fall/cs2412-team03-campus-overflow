@@ -1,0 +1,23 @@
+mvn test 失败基线核对 · 孔志敏 · 2026-11-01
+
+$ cd backend
+$ mvn -B "-Dmaven.test.failure.ignore=true" test
+
+== 全量汇总（surefire 模块汇总行累加）==
+Tests run: 54, Failures: 3, Errors: 20, Skipped: 0
+失败合计 = Failures 3 + Errors 20 = 23
+
+== 存在 Failures/Errors 的测试类（均为 TODO 桩未实现，非环境问题）==
+- qa.application.command.AnswerAndVoteServiceTest
+    Tests 4，Failures 1，Errors 3
+- reputation.domain.BountyAndAccountTest
+    Tests 6，Failures 1，Errors 5
+- reputation.domain.ReputationRulebookTest
+    Tests 9，Failures 0，Errors 8
+- discovery.domain.DiscoveryDomainTest
+    Tests 5，Failures 1，Errors 4
+
+== 判定 ==
+23 个失败/错误全部由 TODO(Sx) 桩方法抛 UnsupportedOperationException 产生；
+qa.domain 18 个测试、identity.domain 9 个、shared-kernel 2 个、ArchUnit 1 个全部通过；
+骨架阶段属预期，不需要改测试断言，补实现后自动转绿。

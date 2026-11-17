@@ -1,5 +1,6 @@
 package com.campusoverflow;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -17,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,7 +35,7 @@ import org.testcontainers.utility.DockerImageName;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @TestPropertySource(properties = {
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.session.SessionAutoConfiguration",
         "co.outbox.poll-interval-ms=200",
@@ -51,6 +53,9 @@ class CampusOverflowFlowIT {
     @ServiceConnection(name = "redis")
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
             .withExposedPorts(6379);
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     @Autowired
     MockMvc mvc;
@@ -86,12 +91,30 @@ class CampusOverflowFlowIT {
                         .content("{\"answerId\":" + answerId + "}"))
                 .andExpect(status().isNoContent());
 
+        // #34 验收：直查真实 MySQL 容器的落库结果，而不是只靠 API 响应间接推断
+        // 覆盖 Controller → Service → Repository → qa_question 的完整写链路
+        assertThat(jdbc.queryForObject(
+                "SELECT accepted_answer_id FROM qa_question WHERE id = ?", Long.class, questionId))
+                .isEqualTo(answerId);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM qa_question_tag WHERE question_id = ?", Integer.class, questionId))
+                .isEqualTo(2);
+
         // 采纳后：回答者 +15 声誉（经发件箱异步结算）
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
                 mvc.perform(get("/api/v1/users/" + hongId + "/reputation"))
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.reputation").value(15))
                         .andExpect(jsonPath("$.badges[?(@.code=='FIRST_ACCEPTED')]").exists()));
+
+        // 异步事件确实写入 rep_account / rep_ledger，而非仅停留在内存态
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+                assertThat(jdbc.queryForList(
+                        "SELECT reputation FROM rep_account WHERE user_id = ?", Integer.class, hongId))
+                        .containsExactly(15));
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM rep_ledger WHERE user_id = ? AND reason = 'ANSWER_ACCEPTED'",
+                Integer.class, hongId)).isPositive();
 
         // 搜索投影：中文关键词可命中，且标记为已采纳
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->

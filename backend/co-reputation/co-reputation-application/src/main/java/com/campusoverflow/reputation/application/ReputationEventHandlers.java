@@ -13,7 +13,7 @@ import com.campusoverflow.reputation.domain.ReputationAccountRepository;
 import com.campusoverflow.reputation.domain.ReputationReason;
 import com.campusoverflow.reputation.domain.ReputationRulebook;
 import java.time.Clock;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -25,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Component
 public class ReputationEventHandlers {
+
+    private static final String QUESTION = "QUESTION";
 
     private final ReputationAccountRepository accounts;
     private final LedgerRepository ledger;
@@ -44,39 +46,65 @@ public class ReputationEventHandlers {
         this.clock = clock;
     }
 
+    /** 开户：学生 0 积分，教师/助教/管理员按规则发放初始悬赏积分。重复投递直接跳过。 */
     @EventListener
     @Transactional
     public void on(UserRegisteredEvent e) {
-        // TODO(S3)：实现 ReputationEventHandlers.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：ReputationEventHandlers.on 尚未实现");
+        if (accounts.findByUserId(e.userId()).isPresent()) {
+            return;
+        }
+        accounts.save(ReputationAccount.open(e.userId(), ReputationRulebook.initialPoints(e.role())));
     }
 
     /** 场景 R-2 的异步后半段：采纳 → 回答者 +15 → 徽章 → 悬赏结算。 */
     @EventListener
     @Transactional
     public void on(AnswerAcceptedEvent e) {
-        // TODO(S3)：实现 ReputationEventHandlers.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：ReputationEventHandlers.on 尚未实现");
+        int delta = ReputationRulebook.acceptedDelta(e.answerAuthorId(), e.questionAuthorId());
+        ledgerService.record(e.answerAuthorId(), e.eventId(), ReputationReason.ANSWER_ACCEPTED, delta,
+                "ANSWER", e.answerId());
+
+        long acceptedCount = ledger.countByUserAndReason(e.answerAuthorId(), ReputationReason.ANSWER_ACCEPTED);
+        BadgePolicy.forAcceptedCount(acceptedCount).forEach(b -> badges.grant(e.answerAuthorId(), b));
+
+        bounties.settleOnAccept(e.questionId(), e.answerId(), e.answerAuthorId(), e.eventId());
     }
 
+    /**
+     * 投票：增量 = 新票效果 − 旧票效果（撤销、改投都能正确处理），
+     * 正向增量再受“每人每日上限”约束；负向增量不受限。
+     */
     @EventListener
     @Transactional
     public void on(VoteCastEvent e) {
-        // TODO(S3)：实现 ReputationEventHandlers.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：ReputationEventHandlers.on 尚未实现");
+        int raw = ReputationRulebook.voteDelta(e.oldValue(), e.newValue());
+        if (raw == 0) {
+            return;
+        }
+        Instant now = clock.instant();
+        int positiveToday = ledger.sumPositiveVoteDeltaSince(e.targetAuthorId(), startOfUtcDay(now));
+        int delta = ReputationRulebook.applyDailyCap(raw, positiveToday);
+        ReputationReason reason = QUESTION.equals(e.targetType())
+                ? ReputationReason.QUESTION_VOTE
+                : ReputationReason.ANSWER_VOTE;
+        ledgerService.record(e.targetAuthorId(), e.eventId(), reason, delta, e.targetType(), e.targetId());
     }
 
+    /** 提交第一个回答即授予「初来乍到」（幂等，后续回答不会重复发放）。 */
     @EventListener
     @Transactional
     public void on(AnswerSubmittedEvent e) {
-        // TODO(S3)：实现 ReputationEventHandlers.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：ReputationEventHandlers.on 尚未实现");
+        badges.grant(e.answerAuthorId(), BadgeType.FIRST_ANSWER);
     }
 
+    /** 教师认证授予「名师认可」。 */
     @EventListener
     @Transactional
     public void on(AnswerEndorsedEvent e) {
-        // TODO(S3)：实现 ReputationEventHandlers.on——参考领域单元测试与 arc42 文档中的业务规则
-        throw new UnsupportedOperationException("TODO(S3)：ReputationEventHandlers.on 尚未实现");
+        badges.grant(e.answerAuthorId(), BadgeType.TEACHER_ENDORSED);
+    }
+
+    private static Instant startOfUtcDay(Instant now) {
+        return now.atZone(ZoneOffset.UTC).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant();
     }
 }
