@@ -9,9 +9,9 @@
 - **根因**：Windows PowerShell 5.1 用系统 ANSI 代码页（中文机器是 GBK）读 `.ps1`，文件若是无 BOM 的 UTF-8，中文会被拆成乱码字节。
 - **做法**：所有 `.ps1` 存成 **UTF-8 with BOM**。`scripts/ci-local.ps1` 就是带 BOM 的，改它的时候别让编辑器把 BOM 去掉。
 
-## 2. Java 源码带 BOM 导致 `javac` 报「非法字符: '\\ufeff'」
+## 2. Java 源码带 BOM 导致 `javac` 报「非法字符: '\ufeff'」
 
-- **现象**：`javac` 报 `非法字符: '\\ufeff'` 或 `需要 class、interface 或 enum`。
+- **现象**：`javac` 报 `非法字符: '\ufeff'` 或 `需要 class、interface 或 enum`。
 - **根因**：PowerShell 的 `Set-Content -Encoding utf8`（在 5.1 下）**会加 BOM**，而 `javac` 不认 BOM。
 - **做法**：`.java` 一律用 UTF-8 **无 BOM** 写入：
 
