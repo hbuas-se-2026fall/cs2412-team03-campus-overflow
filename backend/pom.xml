@@ -37,8 +37,12 @@
         <jacoco.version>0.8.12</jacoco.version>
         <!-- 全后端行覆盖率门禁（适应度函数 FF-4 / Issue #97）。
              阈值只在根 POM 定义一次，由下面 jacoco:check 的 check-all-modules 下发到每个后端模块，
-             CI 不再用 -D 临时覆盖，也不再只对 Q&A 一个模块生效。 -->
-        <domain.coverage.minimum>0.70</domain.coverage.minimum>
+             CI 不再用 -D 临时覆盖，也不再只对 Q&A 一个模块生效。
+
+             2026-11-16 收紧：全局下限 0.70 -> 0.75（当前最低的模块 co-bootstrap 为 79.4%），
+             并给 10 个真正跑单测的模块各自加了下限 0.90~0.95（见各模块 POM 的 properties）。
+             依据是实测值而非目标值：门禁用来防止覆盖被改回去，不是为了数字好看。 -->
+        <domain.coverage.minimum>0.75</domain.coverage.minimum>
         <!-- 默认所有模块都受门禁约束。确实测不到的模块必须在自己的 POM 里覆写为 true
              并写清原因与解除条件，不许用命令行参数或调低阈值绕过。 -->
         <jacoco.check.skip>false</jacoco.check.skip>
