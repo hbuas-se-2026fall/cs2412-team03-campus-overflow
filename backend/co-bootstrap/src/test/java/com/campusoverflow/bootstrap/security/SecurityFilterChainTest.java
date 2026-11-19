@@ -192,7 +192,12 @@ class SecurityFilterChainTest {
         // 与 CsrfCookieFilter 的配合），两边职责不重叠。
         MockHttpServletResponse denied = mvc.perform(post("/api/v1/auth/login")).andReturn().getResponse();
 
-        assertThat(denied.getStatus()).isNotEqualTo(HttpStatus.OK.value());
+        // 精确断言：SecurityConfig 第 82-83 行对 CsrfException 写的是 403 + AUTH-403-CSRF。
+        // 只断言「不是 200」会把「返回 500」「返回 AUTH-403」等错误实现一并放过。
+        assertThat(denied.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
+        assertThat(denied.getContentType()).contains("application/problem+json");
+        assertThat(denied.getContentAsString()).contains("\"code\":\"AUTH-403-CSRF\"");
+        assertThat(denied.getContentAsString()).contains("CSRF 校验失败");
     }
 
     // ---------- 拦截规则 ----------
@@ -217,12 +222,6 @@ class SecurityFilterChainTest {
         assertThat(res.getContentAsString()).doesNotContain("ADMIN");
     }
 
-    @Test
-    void 没有CSRF令牌的写请求不会被当成成功() throws Exception {
-        MockHttpServletResponse res = mvc.perform(post("/api/v1/me/probe")).andReturn().getResponse();
-
-        assertThat(res.getStatus()).isNotEqualTo(HttpStatus.OK.value());
-    }
 
     // ---------- 响应头 ----------
 
