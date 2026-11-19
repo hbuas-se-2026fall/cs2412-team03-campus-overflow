@@ -39,4 +39,17 @@ class VoteAndCommentTest {
         assertThatThrownBy(() -> Comment.post(TargetType.QUESTION, 10, 10, 1, top, "挂错位置的回复", NOW))
                 .isInstanceOf(BusinessRuleException.class);
     }
+    @Test
+    void changeVoteToInvalidValueShouldThrowExceptionAndKeepOriginalState() {
+        // 1. 创建一个合法的初始投票（+1）
+        Vote vote = Vote.cast(1, 3, TargetType.ANSWER, 50, 1, NOW);
+
+        // 2. 尝试将票值改为非法的 0（或者 2），期望抛出业务异常
+        assertThatThrownBy(() -> vote.change(0, NOW))
+            .isInstanceOf(BusinessRuleException.class)
+            .hasMessageContaining("+1 或 -1"); // 依据源码中的提示语
+
+        // 3. 核心断言：发生异常后，原有的值不应该被修改（保证聚合根状态的一致性）
+        assertThat(vote.value()).isEqualTo(1);
+    }
 }
