@@ -12,10 +12,15 @@
     <packaging>jar</packaging>
     <name>Q&amp;A 问答核心 :: domain（纯 Java）</name>
     <properties>
-        <!-- 适应度函数 FF-4：Q&A 领域层行覆盖率门禁（issue #19）。
-             实测 230/230 行 = 100%（Question / Answer / MarkdownBody / Tags / Comment 全部覆盖），故把下限提到 0.95：留 11 行缓冲，但覆盖被拉回去就会红。
-             覆盖全模块的通用阈值 domain.coverage.minimum 仍保持 0，不影响其他上下文。 -->
-        <qa.domain.coverage.minimum>0.95</qa.domain.coverage.minimum>
+        <!-- 本模块覆盖率门禁（issue #19）：Q&A 领域层行覆盖率下限 0.95。
+             实测 230/230 行 = 100%（Question / Answer / MarkdownBody / Tags / Comment 全部覆盖），
+             0.95 留 11 行缓冲，但覆盖被拉回去就会红。
+
+             注：早期这里用的是独立属性 qa.domain.coverage.minimum + 独立 execution
+             check-domain-coverage，与父 POM 的 check-all-modules（读 domain.coverage.minimum，
+             未覆写时继承全局 0.75）并存，导致「表格写的、注释写的、实际生效的」三个口径打架。
+             现已统一为覆写 domain.coverage.minimum，并删除那条独立规则——与其他 9 个模块一致。 -->
+        <domain.coverage.minimum>0.95</domain.coverage.minimum>
     </properties>
     <dependencies>
         <dependency>
@@ -33,32 +38,4 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.jacoco</groupId>
-                <artifactId>jacoco-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>check-domain-coverage</id>
-                        <goals><goal>check</goal></goals>
-                        <configuration>
-                            <rules>
-                                <rule>
-                                    <element>BUNDLE</element>
-                                    <limits>
-                                        <limit>
-                                            <counter>LINE</counter>
-                                            <value>COVEREDRATIO</value>
-                                            <minimum>${qa.domain.coverage.minimum}</minimum>
-                                        </limit>
-                                    </limits>
-                                </rule>
-                            </rules>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
 </project>
