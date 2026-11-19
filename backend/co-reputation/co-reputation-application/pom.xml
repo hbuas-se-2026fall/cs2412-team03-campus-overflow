@@ -17,6 +17,8 @@
              现在已用应用层单元测试补齐（手写替身，覆盖开户/记账/徽章/悬赏/查询/排行榜/对账），
              因此删除 jacoco.check.skip，让本模块回到与其余 26 个模块一致的统一下限。
              这些测试只依赖端口接口，不需要 Spring 容器、数据库或 Redis。 -->
+        <!-- 实测 246/248 行 = 99.2%，本模块门禁 0.95（高于全局 0.75）。 -->
+        <domain.coverage.minimum>0.95</domain.coverage.minimum>
     </properties>
     <dependencies>
         <dependency>
