@@ -40,7 +40,7 @@ export default function CoursePage() {
           setMyData([]);
         })
         .finally(() => setLoading(false)),
-    [],
+    []
   );
 
   useEffect(() => {
@@ -74,20 +74,34 @@ export default function CoursePage() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="course-page-wrapper">
       <h2>课程中心</h2>
       <Tabs
         items={[
           {
             key: 'all',
             label: '所有课程',
-            children: <Table<CourseRow> dataSource={allData} columns={columns} loading={loading} rowKey="id" />,
+            children: (
+              <Table<CourseRow>
+                dataSource={allData}
+                columns={columns}
+                loading={loading}
+                rowKey="id"
+                scroll={{ x: 'max-content' }} // <--- 添加这个属性
+              />
+            ),
           },
           {
             key: 'my',
             label: '我的课程',
             children: (
-              <Table<CourseRow> dataSource={myData} columns={columns.slice(0, 3)} loading={loading} rowKey="id" />
+              <Table<CourseRow>
+                dataSource={myData}
+                columns={columns.slice(0, 3)}
+                loading={loading}
+                rowKey="id"
+                scroll={{ x: 'max-content' }} // <--- 添加这个属性
+              />
             ),
           },
         ]}
