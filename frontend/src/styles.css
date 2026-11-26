@@ -71,3 +71,59 @@ article h1 { font-size: 24px; margin-bottom: 4px; }
 .plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .muted { color: var(--muted); }
 .error { color: var(--danger); }
+/*针对375px手机适配*/
+@media (max-width: 600px) {
+  /* 1. 全局与顶栏适配 */
+  main { padding: 16px 12px; }
+  .topbar { padding: 12px; flex-wrap: wrap; gap: 8px; }
+  .topbar nav { flex-wrap: wrap; gap: 8px; width: 100%; justify-content: space-between; }
+
+  /* 2. 问题列表页 (QuestionListPage) */
+  .toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .toolbar input, .toolbar select, .toolbar .primary { width: 100%; box-sizing: border-box; }
+
+  /* 列表卡片从左右排版改为上下排版 */
+  .qlist li { flex-direction: column; gap: 10px; padding: 12px; }
+  .stats {
+    flex-direction: row; /* 票数、回答数横向排列 */
+    min-width: auto;
+    text-align: left;
+    border-bottom: 1px dashed var(--line);
+    padding-bottom: 8px;
+  }
+
+  /* 3. 问题详情页 (QuestionDetailPage) */
+  /* 回答/提问卡片从左右排版改为上下排版 */
+  .post { flex-direction: column; gap: 12px; padding: 12px; }
+  .votebox {
+    flex-direction: row; /* 投票按钮横向排列 */
+    justify-content: flex-start;
+    background: var(--bg);
+    padding: 8px;
+    border-radius: 6px;
+  }
+  .comment-form { flex-direction: column; }
+  .comment-form button { width: 100%; margin-top: 6px; }
+
+  /* 4. 课程中心 (CoursePage) */
+  /* 表格在手机上极易撑破屏幕，强制让其内部滚动 */
+  .board { display: block; overflow-x: auto; white-space: nowrap; }
+
+  /* 5. 其他微调 */
+  article h1 { font-size: 20px; }
+  .form-page { padding: 0 12px; }
+
+  /* 修复复选框在手机端对齐问题 */
+  .toolbar label.check {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    margin-top: 4px;
+  }
+
+  /* 强制让复选框和文字紧挨着，并保持居中 */
+  .toolbar label.check input[type="checkbox"] {
+    margin: 0 8px 0 0 !important; /* 右边留 8px 间隙 */
+  }
+}
