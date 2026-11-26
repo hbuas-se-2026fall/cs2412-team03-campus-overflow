@@ -64,22 +64,11 @@ export function QuestionListPage() {
             <option value="hot">得分最高</option>
             <option value="relevance">相关度</option>
           </select>
-          <label
-            className="check"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              width: '100%',
-              gap: '8px',
-              cursor: 'pointer',
-            }}
-          >
+          <label className="check">
             <input
               type="checkbox"
               checked={unanswered}
               onChange={(e) => setUnanswered(e.target.checked)}
-              style={{ margin: 0, width: '16px', height: '16px' }}
             />
             <span>仅看未回答</span>
           </label>

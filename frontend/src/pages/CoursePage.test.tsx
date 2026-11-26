@@ -8,12 +8,23 @@ const { coursesMock, myCoursesMock, joinCourseMock } = vi.hoisted(() => ({
   joinCourseMock: vi.fn(),
 }));
 
-vi.mock('../api', () => ({ api: { courses: coursesMock, myCourses: myCoursesMock, joinCourse: joinCourseMock } }));
+vi.mock('../api', () => ({
+  api: {
+    courses: coursesMock,
+    myCourses: myCoursesMock,
+    joinCourse: joinCourseMock,
+  },
+}));
 
 const cs101 = { id: 1, code: 'CS101', name: '数据结构与算法', term: '2026秋' };
 const cs102 = { id: 2, code: 'CS102', name: '操作系统', term: '2026秋' };
 
-const page = (items: typeof cs101[]) => ({ items, total: items.length, page: 1, size: 20 });
+const page = (items: (typeof cs101)[]) => ({
+  items,
+  total: items.length,
+  page: 1,
+  size: 20,
+});
 
 describe('CoursePage', () => {
   beforeEach(() => {
@@ -21,9 +32,14 @@ describe('CoursePage', () => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: (query: string) => ({
-        matches: false, media: query, onchange: null,
-        addListener: vi.fn(), removeListener: vi.fn(),
-        addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
       }),
     });
     coursesMock.mockResolvedValue(page([cs101, cs102]));
@@ -34,7 +50,9 @@ describe('CoursePage', () => {
   it('渲染课程中心的两个 Tab 与课程列表', async () => {
     render(<CoursePage />);
 
-    expect(screen.getByRole('heading', { name: '课程中心' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '课程中心' })
+    ).toBeInTheDocument();
     expect(await screen.findByText('CS101')).toBeInTheDocument();
     expect(screen.getByText('CS102')).toBeInTheDocument();
     expect(screen.getAllByRole('tab').length).toBe(2);
@@ -48,7 +66,10 @@ describe('CoursePage', () => {
 
     const reload = vi.fn();
     const originalLocation = window.location;
-    Object.defineProperty(window, 'location', { configurable: true, value: { ...originalLocation, reload } });
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, reload },
+    });
 
     fireEvent.click(screen.getAllByRole('button', { name: '加入课程' })[0]);
 
@@ -57,7 +78,10 @@ describe('CoursePage', () => {
     await waitFor(() => expect(myCoursesMock).toHaveBeenCalledTimes(2));
     expect(reload).not.toHaveBeenCalled();
 
-    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
   });
 
   it('加入课程失败时不会重复拉取列表', async () => {
@@ -81,7 +105,9 @@ describe('CoursePage', () => {
 
     await waitFor(() => expect(coursesMock).toHaveBeenCalled());
     expect(screen.queryByText('CS101')).not.toBeInTheDocument();
-    expect(screen.getByText('课程代码')).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '课程代码' })
+    ).toBeInTheDocument();
     spy.mockRestore();
   });
 
